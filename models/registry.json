@@ -6,7 +6,7 @@
   "agents": {
     "claude-code": {
       "displayName": "Claude Code",
-      "default": "claude-sonnet-4-8",
+      "default": "claude-sonnet-4-6",
       "aliases": [
         { "id": "default", "label": "default (CLI decides)" },
         { "id": "sonnet",  "label": "sonnet (alias → latest sonnet)" },
@@ -15,7 +15,7 @@
       ],
       "models": [
         { "id": "claude-opus-4-8",          "label": "Opus 4.8",   "tier": "premium",  "default": false },
-        { "id": "claude-sonnet-4-8",        "label": "Sonnet 4.8", "tier": "standard", "default": true  },
+        { "id": "claude-sonnet-4-6",        "label": "Sonnet 4.6", "tier": "standard", "default": true  },
         { "id": "claude-haiku-4-5-20251001","label": "Haiku 4.5",  "tier": "fast",     "default": false }
       ]
     },
