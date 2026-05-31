@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/aiwatching/forge-public-info/main/models/registry.schema.json",
   "version": 1,
   "updatedAt": "2026-05-30",
-  "note": "Forge consumes this at startup via lib/public-info/fetch.ts (24h cache). Add new models here and any running Forge >= 0.10.12 will pick them up within a day, no npm release required.",
+  "note": "Forge consumes this at startup via lib/public-info/fetch.ts (24h cache). 'agents' holds CLI agent types (claude-code, codex, aider); 'providers' holds API providers (anthropic, openai, etc). UI looks up by cliType for CLI profiles and by provider for API profiles.",
   "agents": {
     "claude-code": {
       "displayName": "Claude Code",
@@ -37,6 +37,64 @@
       "aliases": [
         { "id": "default", "label": "default (CLI decides)" }
       ],
+      "models": []
+    }
+  },
+  "providers": {
+    "anthropic": {
+      "displayName": "Anthropic API",
+      "default": "claude-sonnet-4-6",
+      "aliases": [],
+      "models": [
+        { "id": "claude-opus-4-8",           "label": "Opus 4.8",   "tier": "premium",  "default": false },
+        { "id": "claude-sonnet-4-6",         "label": "Sonnet 4.6", "tier": "standard", "default": true  },
+        { "id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5",  "tier": "fast",     "default": false }
+      ]
+    },
+    "openai": {
+      "displayName": "OpenAI API",
+      "default": "gpt-4.1",
+      "aliases": [],
+      "models": [
+        { "id": "gpt-4.1",  "label": "GPT-4.1",  "tier": "premium",  "default": true  },
+        { "id": "gpt-4o",   "label": "GPT-4o",   "tier": "standard", "default": false },
+        { "id": "o4-mini",  "label": "o4-mini",  "tier": "fast",     "default": false },
+        { "id": "o3-mini",  "label": "o3-mini",  "tier": "fast",     "default": false }
+      ]
+    },
+    "grok": {
+      "displayName": "Grok / xAI",
+      "default": "grok-4",
+      "aliases": [],
+      "models": [
+        { "id": "grok-4",      "label": "Grok 4",      "tier": "premium",  "default": true  },
+        { "id": "grok-3",      "label": "Grok 3",      "tier": "standard", "default": false },
+        { "id": "grok-3-mini", "label": "Grok 3 Mini", "tier": "fast",     "default": false }
+      ]
+    },
+    "google": {
+      "displayName": "Google / Gemini",
+      "default": "gemini-2.5-pro",
+      "aliases": [],
+      "models": [
+        { "id": "gemini-2.5-pro",   "label": "Gemini 2.5 Pro",   "tier": "premium",  "default": true  },
+        { "id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "tier": "standard", "default": false },
+        { "id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash", "tier": "fast",     "default": false }
+      ]
+    },
+    "deepseek": {
+      "displayName": "DeepSeek",
+      "default": "deepseek-chat",
+      "aliases": [],
+      "models": [
+        { "id": "deepseek-chat",     "label": "DeepSeek Chat",     "tier": "standard", "default": true  },
+        { "id": "deepseek-reasoner", "label": "DeepSeek Reasoner", "tier": "premium",  "default": false }
+      ]
+    },
+    "litellm": {
+      "displayName": "LiteLLM (OpenAI-compatible proxy)",
+      "default": "",
+      "aliases": [],
       "models": []
     }
   }
