@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/aiwatching/forge-public-info/main/models/registry.schema.json",
+  "version": 1,
+  "updatedAt": "2026-05-30",
+  "note": "Forge consumes this at startup via lib/public-info/fetch.ts (24h cache). Add new models here and any running Forge >= 0.10.12 will pick them up within a day, no npm release required.",
+  "agents": {
+    "claude-code": {
+      "displayName": "Claude Code",
+      "default": "claude-sonnet-4-8",
+      "aliases": [
+        { "id": "default", "label": "default (CLI decides)" },
+        { "id": "sonnet",  "label": "sonnet (alias → latest sonnet)" },
+        { "id": "opus",    "label": "opus (alias → latest opus)" },
+        { "id": "haiku",   "label": "haiku (alias → latest haiku)" }
+      ],
+      "models": [
+        { "id": "claude-opus-4-8",          "label": "Opus 4.8",   "tier": "premium",  "default": false },
+        { "id": "claude-sonnet-4-8",        "label": "Sonnet 4.8", "tier": "standard", "default": true  },
+        { "id": "claude-haiku-4-5-20251001","label": "Haiku 4.5",  "tier": "fast",     "default": false }
+      ]
+    },
+    "codex": {
+      "displayName": "OpenAI Codex",
+      "default": "o4-mini",
+      "aliases": [
+        { "id": "default", "label": "default (CLI decides)" }
+      ],
+      "models": [
+        { "id": "o4-mini",  "label": "o4-mini",  "tier": "fast",     "default": true  },
+        { "id": "o3-mini",  "label": "o3-mini",  "tier": "fast",     "default": false },
+        { "id": "gpt-4.1",  "label": "GPT-4.1",  "tier": "standard", "default": false }
+      ]
+    },
+    "aider": {
+      "displayName": "Aider",
+      "default": "default",
+      "aliases": [
+        { "id": "default", "label": "default (CLI decides)" }
+      ],
+      "models": []
+    }
+  }
+}
