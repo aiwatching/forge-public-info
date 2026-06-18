@@ -105,12 +105,21 @@ mkdir -p "$WORKSPACE_DIR"
 
 # --- 6. Start the new container ---
 step "Starting $CONTAINER on http://localhost:$HOST_PORT"
+# Mount the host's docker auth so the CLI inside admin can hand the GHCR
+# bearer token to the host daemon when it pulls the forge-workspace image.
+# Without this, `docker compose up` from inside admin gets 401 on private
+# ghcr.io tags. Read-only so admin can't mutate the host's credentials.
+DOCKER_AUTH_MOUNT=""
+if [ -f "$HOME/.docker/config.json" ]; then
+  DOCKER_AUTH_MOUNT="-v $HOME/.docker/config.json:/root/.docker/config.json:ro"
+fi
 docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
   -p "${HOST_PORT}:4000" \
   -v "$WORKSPACE_DIR:$WORKSPACE_DIR" \
   -v /var/run/docker.sock:/var/run/docker.sock \
+  $DOCKER_AUTH_MOUNT \
   -e "WORKSPACE_DIR=$WORKSPACE_DIR" \
   "$IMAGE" >/dev/null
 
