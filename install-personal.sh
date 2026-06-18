@@ -105,25 +105,46 @@ mkdir -p "$WORKSPACE_DIR"
 
 # --- 6. Start the new container ---
 step "Starting $CONTAINER on http://localhost:$HOST_PORT"
-# Resolve the docker daemon socket on the host. Docker Desktop for Mac
-# stopped exposing /var/run/docker.sock by default in 4.18 (the user has
-# to opt in via Settings -> Advanced -> "Allow the default Docker socket
-# to be used"). The user-level socket at ~/.docker/run/docker.sock is
-# always present though, so prefer the system path when it works and fall
-# back to the user one. We always mount it INTO the container at
-# /var/run/docker.sock so the entrypoint check (docker version) sees it
-# at the expected location.
-if [ -S "/var/run/docker.sock" ]; then
-  SOCK_HOST="/var/run/docker.sock"
-elif [ -S "$HOME/.docker/run/docker.sock" ]; then
+# Resolve the docker daemon socket on the host. Docker Desktop on Mac/Windows
+# always exposes a user-level socket at ~/.docker/run/docker.sock and that
+# one is what `docker` on the CLI normally uses. Some setups ALSO expose
+# /var/run/docker.sock — but on Mac it's often a SYMLINK to a path INSIDE
+# the Docker Desktop VM, which becomes useless once bind-mounted from the
+# Mac filesystem side. Prefer the user-level one; only fall back to the
+# system path if the user one isn't there. We always mount it INTO the
+# container at /var/run/docker.sock so the entrypoint check sees it at
+# the standard location.
+if [ -S "$HOME/.docker/run/docker.sock" ]; then
   SOCK_HOST="$HOME/.docker/run/docker.sock"
+elif [ -S "/var/run/docker.sock" ]; then
+  SOCK_HOST="/var/run/docker.sock"
 else
-  fail "no docker socket found at /var/run/docker.sock or $HOME/.docker/run/docker.sock.
+  fail "no docker socket found at $HOME/.docker/run/docker.sock or /var/run/docker.sock.
 
 Open Docker Desktop -> Settings -> Advanced and enable
 \"Allow the default Docker socket to be used\", then re-run this script."
 fi
+# Print what we picked + ls -la so the user can see the real file/symlink
+# state if the daemon still isn't reachable from the container.
 printf '  - docker socket: %s\n' "$SOCK_HOST"
+ls -la "$SOCK_HOST" 2>&1 | sed 's/^/      /'
+
+# Sanity-pre-flight from the OUTSIDE: try the chosen socket with a throw-
+# away container BEFORE starting the admin. If even this can't talk to the
+# host daemon, the bind itself is broken and admin would just crash-loop.
+if ! docker run --rm -v "$SOCK_HOST:/var/run/docker.sock" \
+       docker:28-cli version >/dev/null 2>&1; then
+  fail "the chosen socket ($SOCK_HOST) is present but a sibling container
+cannot talk to the docker daemon through it. This usually means it is a
+symlink to a path inside the Docker Desktop VM that bind-mounts can't
+reach.
+
+Open Docker Desktop -> Settings -> Advanced and enable
+\"Allow the default Docker socket to be used\", then re-run this script.
+If you have multiple docker contexts (\`docker context ls\`), switch to
+\"desktop-linux\" with \`docker context use desktop-linux\` first."
+fi
+printf '  - sibling container can reach daemon via this socket\n'
 
 # Mount the host's docker auth so the CLI inside admin can hand the GHCR
 # bearer token to the host daemon when it pulls the forge-workspace image.
