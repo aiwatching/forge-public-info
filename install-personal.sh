@@ -105,6 +105,26 @@ mkdir -p "$WORKSPACE_DIR"
 
 # --- 6. Start the new container ---
 step "Starting $CONTAINER on http://localhost:$HOST_PORT"
+# Resolve the docker daemon socket on the host. Docker Desktop for Mac
+# stopped exposing /var/run/docker.sock by default in 4.18 (the user has
+# to opt in via Settings -> Advanced -> "Allow the default Docker socket
+# to be used"). The user-level socket at ~/.docker/run/docker.sock is
+# always present though, so prefer the system path when it works and fall
+# back to the user one. We always mount it INTO the container at
+# /var/run/docker.sock so the entrypoint check (docker version) sees it
+# at the expected location.
+if [ -S "/var/run/docker.sock" ]; then
+  SOCK_HOST="/var/run/docker.sock"
+elif [ -S "$HOME/.docker/run/docker.sock" ]; then
+  SOCK_HOST="$HOME/.docker/run/docker.sock"
+else
+  fail "no docker socket found at /var/run/docker.sock or $HOME/.docker/run/docker.sock.
+
+Open Docker Desktop -> Settings -> Advanced and enable
+\"Allow the default Docker socket to be used\", then re-run this script."
+fi
+printf '  - docker socket: %s\n' "$SOCK_HOST"
+
 # Mount the host's docker auth so the CLI inside admin can hand the GHCR
 # bearer token to the host daemon when it pulls the forge-workspace image.
 # Without this, `docker compose up` from inside admin gets 401 on private
@@ -118,7 +138,7 @@ docker run -d \
   --restart unless-stopped \
   -p "${HOST_PORT}:4000" \
   -v "$WORKSPACE_DIR:$WORKSPACE_DIR" \
-  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$SOCK_HOST:/var/run/docker.sock" \
   $DOCKER_AUTH_MOUNT \
   -e "WORKSPACE_DIR=$WORKSPACE_DIR" \
   "$IMAGE" >/dev/null
