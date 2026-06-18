@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Forge Personal — one-command installer.
+# Forge Personal - one-command installer.
 #
 # Lives at: https://github.com/aiwatching/forge-public-info/blob/main/install-personal.sh
 #
@@ -12,35 +12,41 @@
 #   chmod +x install-personal.sh
 #   ./install-personal.sh <PAT>
 #
-# Re-running is safe and idempotent — it upgrades the image and recreates
+# Re-running is safe and idempotent - it upgrades the image and recreates
 # the container while preserving every workspace under $WORKSPACE_DIR
 # (default ~/forge-personal).
+#
+# This file is intentionally ASCII-only (no en/em-dashes, ellipses, arrows,
+# box-drawing). When `bash -s -- <args>` reads the script from a curl pipe,
+# multi-byte UTF-8 chars can split across read buffers and break parsing
+# (e.g. an ellipsis right after $VAR makes bash see VAR<garbage> as the
+# variable name and error with "unbound variable"). Stick to ASCII.
 
 set -euo pipefail
 
-# ─── Config (overridable via env) ────────────────────────────────────
+# --- Config (overridable via env) ---
 IMAGE="${IMAGE:-ghcr.io/aiwatching/forge-personal-admin:latest}"
 CONTAINER="${CONTAINER:-forge-personal}"
 HOST_PORT="${HOST_PORT:-4100}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/forge-personal}"
 # Any non-empty value for -u works; GHCR validates the PAT scope, not the
-# user. Keep a memorable shared identity so `docker login` log lines are
+# user. Keep a memorable shared identity so docker login log lines are
 # distinguishable in corp audit trails.
 DOCKER_LOGIN_USER="${DOCKER_LOGIN_USER:-forge-corp-user}"
 
-# ─── Pretty output ───────────────────────────────────────────────────
+# --- Pretty output ---
 c_red()  { printf '\033[31m%s\033[0m' "$*"; }
 c_grn()  { printf '\033[32m%s\033[0m' "$*"; }
 c_ylw()  { printf '\033[33m%s\033[0m' "$*"; }
 c_dim()  { printf '\033[2m%s\033[0m' "$*"; }
-step()   { printf '\n%s %s\n' "$(c_grn '▸')" "$*"; }
-fail()   { printf '\n%s %s\n' "$(c_red '✗')" "$*" >&2; exit 1; }
+step()   { printf '\n%s %s\n' "$(c_grn '>')" "$*"; }
+fail()   { printf '\n%s %s\n' "$(c_red 'x')" "$*" >&2; exit 1; }
 
-# ─── 1. Args ─────────────────────────────────────────────────────────
+# --- 1. Args ---
 PAT="${1:-${GHCR_PAT:-}}"
 if [ -z "$PAT" ]; then
   cat >&2 <<EOF
-$(c_red '✗') Missing PAT.
+$(c_red 'x') Missing PAT.
 
 Usage:
   $0 <github-PAT>
@@ -48,13 +54,13 @@ Usage:
 Or set env:
   GHCR_PAT=ghp_xxx $0
 
-Ask your admin for the PAT (a string starting with ghp_…).
+Ask your admin for the PAT (a string starting with ghp_).
 EOF
   exit 1
 fi
 
-# ─── 2. Pre-flight ───────────────────────────────────────────────────
-step "Checking Docker…"
+# --- 2. Pre-flight ---
+step "Checking Docker"
 if ! command -v docker >/dev/null 2>&1; then
   fail "docker not found.
 
@@ -66,39 +72,39 @@ fi
 if ! docker info >/dev/null 2>&1; then
   fail "docker daemon not reachable.
 
-Open Docker Desktop and wait until it says \"Docker Desktop is running\", then re-run this script."
+Open Docker Desktop and wait until it says 'Docker Desktop is running', then re-run this script."
 fi
-printf '  %s docker %s\n' "$(c_dim '·')" "$(docker --version | awk '{print $3}' | tr -d ,)"
+printf '  - docker %s\n' "$(docker --version | awk '{print $3}' | tr -d ,)"
 
-# ─── 3. Login to GHCR ────────────────────────────────────────────────
-step "Logging in to ghcr.io…"
+# --- 3. Login to GHCR ---
+step "Logging in to ghcr.io"
 if ! echo "$PAT" | docker login ghcr.io -u "$DOCKER_LOGIN_USER" --password-stdin >/dev/null 2>&1; then
-  fail "docker login failed — PAT might be invalid or expired.
+  fail "docker login failed - PAT might be invalid or expired.
 
-Double-check the PAT string (should start with ghp_… and end with no whitespace).
+Double-check the PAT string (should start with ghp_ and end with no whitespace).
 If the PAT was recently rotated, ask your admin for the latest one."
 fi
-printf '  %s login succeeded\n' "$(c_dim '·')"
+printf '  - login succeeded\n'
 
-# ─── 4. Pull image ───────────────────────────────────────────────────
-step "Pulling $IMAGE…"
+# --- 4. Pull image ---
+step "Pulling $IMAGE"
 if ! docker pull "$IMAGE"; then
   fail "docker pull failed.
 
-If you see \"denied\" or \"unauthorized\", your PAT doesn't have access to
+If you see 'denied' or 'unauthorized', your PAT does not have access to
 the package. Ask your admin to add you to the package or rotate the PAT."
 fi
 
-# ─── 5. Replace existing container if any ────────────────────────────
+# --- 5. Replace existing container if any ---
 if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
-  step "Removing previous $CONTAINER container (workspace data in $WORKSPACE_DIR is preserved)…"
+  step "Removing previous $CONTAINER container (workspace data in $WORKSPACE_DIR is preserved)"
   docker rm -f "$CONTAINER" >/dev/null
 fi
 
 mkdir -p "$WORKSPACE_DIR"
 
-# ─── 6. Start the new container ──────────────────────────────────────
-step "Starting $CONTAINER on http://localhost:$HOST_PORT…"
+# --- 6. Start the new container ---
+step "Starting $CONTAINER on http://localhost:$HOST_PORT"
 docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
@@ -112,8 +118,8 @@ docker run -d \
 sleep 1
 docker logs "$CONTAINER" 2>&1 | tail -8
 
-# ─── 7. Smoke check ──────────────────────────────────────────────────
-# Probe localhost:HOST_PORT a few times — the admin takes ~3-5s to boot
+# --- 7. Smoke check ---
+# Probe localhost:HOST_PORT a few times - the admin takes ~3-5s to boot
 # (sqlite open + extension load + listen). If it never answers, dump the
 # full logs so the user has something actionable.
 ready=0
@@ -133,17 +139,17 @@ if [ "$ready" -eq 0 ]; then
   exit 1
 fi
 
-# ─── 8. Done ─────────────────────────────────────────────────────────
+# --- 8. Done ---
 cat <<EOF
 
-$(c_grn '✓') Forge Personal is running.
+$(c_grn 'OK') Forge Personal is running.
 
   URL:        $(c_grn "http://localhost:$HOST_PORT")
   Data dir:   $WORKSPACE_DIR
   Image:      $IMAGE
 
 First-time setup: the URL above will prompt you to create an admin
-email + password — that's local to your own copy.
+email + password - that is local to your own copy.
 
 Day-to-day commands:
   docker logs -f $CONTAINER     # follow logs
