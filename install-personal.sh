@@ -33,6 +33,11 @@ WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/forge-personal}"
 # user. Keep a memorable shared identity so docker login log lines are
 # distinguishable in corp audit trails.
 DOCKER_LOGIN_USER="${DOCKER_LOGIN_USER:-forge-corp-user}"
+# Subnet for the workspace docker network. Default 172.20.0.0/16 collides
+# on Macs that already run docker-compose stacks in that range
+# (extremely common). Auto-detect a free /16 below and use it unless the
+# operator explicitly set FORGE_SUBNET.
+FORGE_SUBNET="${FORGE_SUBNET:-}"
 
 # --- Pretty output ---
 c_red()  { printf '\033[31m%s\033[0m' "$*"; }
@@ -104,11 +109,36 @@ fi
 mkdir -p "$WORKSPACE_DIR"
 
 # --- 6. Start the new container ---
+# Pick a workspace subnet. If the operator passed FORGE_SUBNET, trust it.
+# Otherwise scan the other docker networks' subnets and pick the lowest
+# free /16 in 172.20-172.99 (sticking with the documented 172.x bridge
+# space). Done before admin starts so the value is in admin's env from
+# the very first provision attempt.
+if [ -z "$FORGE_SUBNET" ]; then
+  step "Picking a free /16 for the workspace docker network"
+  used=$(docker network ls --format '{{.ID}}' | while read id; do
+    docker network inspect "$id" --format '{{range .IPAM.Config}}{{.Subnet}}{{println}}{{end}}' 2>/dev/null
+  done | grep -oE '^172\.[0-9]+' | sort -u)
+  for n in $(seq 20 99); do
+    candidate="172.$n.0.0/16"
+    if ! printf '%s\n' "$used" | grep -qx "172.$n"; then
+      FORGE_SUBNET="$candidate"
+      break
+    fi
+  done
+  if [ -z "$FORGE_SUBNET" ]; then
+    fail "no free /16 found in 172.20-172.99 - pass FORGE_SUBNET=<subnet> explicitly."
+  fi
+  printf '  - using %s (auto-picked, free)\n' "$FORGE_SUBNET"
+else
+  printf '  - using %s (FORGE_SUBNET env override)\n' "$FORGE_SUBNET"
+fi
+
 step "Starting $CONTAINER on http://localhost:$HOST_PORT"
 # Resolve the docker daemon socket on the host. Docker Desktop on Mac/Windows
 # always exposes a user-level socket at ~/.docker/run/docker.sock and that
 # one is what `docker` on the CLI normally uses. Some setups ALSO expose
-# /var/run/docker.sock — but on Mac it's often a SYMLINK to a path INSIDE
+# /var/run/docker.sock - but on Mac it's often a SYMLINK to a path INSIDE
 # the Docker Desktop VM, which becomes useless once bind-mounted from the
 # Mac filesystem side. Prefer the user-level one; only fall back to the
 # system path if the user one isn't there. We always mount it INTO the
@@ -162,6 +192,7 @@ docker run -d \
   -v "$SOCK_HOST:/var/run/docker.sock" \
   $DOCKER_AUTH_MOUNT \
   -e "WORKSPACE_DIR=$WORKSPACE_DIR" \
+  -e "FORGE_SUBNET=$FORGE_SUBNET" \
   "$IMAGE" >/dev/null
 
 # Give the entrypoint a moment to land, then show its banner.
