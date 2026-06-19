@@ -118,16 +118,36 @@ else
 fi
 
 step "Removing images"
-imgs=$(docker images -q \
-  --filter "reference=${ADMIN_IMAGE_REPO}*" \
-  --filter "reference=${WORKSPACE_IMAGE_REPO}*" 2>/dev/null | sort -u | tr '\n' ' ')
-if [ -n "$imgs" ]; then
-  docker rmi -f $imgs >/dev/null 2>&1 || true
-  printf '  - removed image IDs: %s\n' "$imgs"
-else
-  printf '  - (no images found)\n'
-fi
-docker image prune -f >/dev/null 2>&1 || true
+# Match by EXACT repository name only - "reference=<repo>" without a trailing
+# wildcard, then iterate every tag. Earlier versions used
+#   --filter "reference=<repo>*"
+# which is a glob match and could sweep in unrelated repos that happened to
+# share the prefix (e.g. ghcr.io/aiwatching/forge-workspace-other).
+#
+# Critically: NO `docker image prune -f` after this. prune removes ALL
+# dangling images on the host - including completely unrelated build-cache
+# layers from other projects. That was the bug that nuked your other work.
+remove_tags_for_repo() {
+  local repo="$1"
+  # docker images <repo> --format '{{.Repository}}:{{.Tag}}' lists EXACT
+  # tags for that repo only. <none>:<none> entries (dangling) are not
+  # produced when a repo is specified, so we won't accidentally hit
+  # unrelated dangling layers.
+  local tags
+  tags=$(docker images "$repo" --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
+         | grep -v '<none>' | sort -u | tr '\n' ' ')
+  if [ -n "$tags" ]; then
+    # shellcheck disable=SC2086
+    docker rmi -f $tags >/dev/null 2>&1 || true
+    printf '  - removed: %s\n' "$tags"
+  fi
+}
+remove_tags_for_repo "$ADMIN_IMAGE_REPO"
+remove_tags_for_repo "$WORKSPACE_IMAGE_REPO"
+# If nothing was reported above, the repos weren't on the host.
+docker images "$ADMIN_IMAGE_REPO" -q 2>/dev/null | grep -q . || \
+  docker images "$WORKSPACE_IMAGE_REPO" -q 2>/dev/null | grep -q . || \
+  printf '  - (no forge images present)\n'
 
 step "Removing data directory $WORKSPACE_DIR"
 if [ -d "$WORKSPACE_DIR" ]; then
