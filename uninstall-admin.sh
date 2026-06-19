@@ -8,19 +8,19 @@
 #   - the data directory $WORKSPACE_DIR (default: ~/forge-personal),
 #     including root-owned files written by the workspace containers
 #
-# Re-installing afterwards: just run install-personal.sh again.
+# Re-installing afterwards: just run install-admin.sh again.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/uninstall-personal.sh | bash
-#   curl -fsSL ...uninstall-personal.sh | bash -s -- --yes        # skip the prompt
+#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/uninstall-admin.sh | bash
+#   curl -fsSL ...uninstall-admin.sh | bash -s -- --yes        # skip the prompt
 #
-# This file is ASCII-only on purpose (see install-personal.sh header).
+# This file is ASCII-only on purpose (see install-admin.sh header).
 
 set -euo pipefail
 
 # --- Config (overridable via env) ---
-CONTAINER="${CONTAINER:-forge-personal}"
-WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/forge-personal}"
+CONTAINER="${CONTAINER:-forge-admin}"
+WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/forge-admin}"
 ADMIN_IMAGE_REPO="${ADMIN_IMAGE_REPO:-ghcr.io/aiwatching/forge-personal-admin}"
 WORKSPACE_IMAGE_REPO="${WORKSPACE_IMAGE_REPO:-ghcr.io/aiwatching/forge-workspace}"
 NETWORK="${NETWORK:-forge-workspace-net}"
@@ -178,5 +178,5 @@ $(c_grn 'OK') Forge Personal uninstalled.
   $(c_dim 'GHCR login is left in place')   ($HOME/.docker/config.json)
   $(c_dim 'Run \`docker logout ghcr.io\` if you want to drop the credentials too.')
 
-  Re-install anytime by running install-personal.sh again.
+  Re-install anytime by running install-admin.sh again.
 EOF

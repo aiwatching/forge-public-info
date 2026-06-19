@@ -2,19 +2,19 @@
 #
 # Forge Personal - one-command installer.
 #
-# Lives at: https://github.com/aiwatching/forge-public-info/blob/main/install-personal.sh
+# Lives at: https://github.com/aiwatching/forge-public-info/blob/main/install-admin.sh
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-personal.sh | bash -s -- <PAT>
+#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-admin.sh | bash -s -- <PAT>
 #
 # Or download + run:
-#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-personal.sh -o install-personal.sh
-#   chmod +x install-personal.sh
-#   ./install-personal.sh <PAT>
+#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-admin.sh -o install-admin.sh
+#   chmod +x install-admin.sh
+#   ./install-admin.sh <PAT>
 #
 # Re-running is safe and idempotent - it upgrades the image and recreates
 # the container while preserving every workspace under $WORKSPACE_DIR
-# (default ~/forge-personal).
+# (default ~/forge-admin).
 #
 # This file is intentionally ASCII-only (no en/em-dashes, ellipses, arrows,
 # box-drawing). When `bash -s -- <args>` reads the script from a curl pipe,
@@ -26,9 +26,9 @@ set -euo pipefail
 
 # --- Config (overridable via env) ---
 IMAGE="${IMAGE:-ghcr.io/aiwatching/forge-personal-admin:latest}"
-CONTAINER="${CONTAINER:-forge-personal}"
+CONTAINER="${CONTAINER:-forge-admin}"
 HOST_PORT="${HOST_PORT:-4100}"
-WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/forge-personal}"
+WORKSPACE_DIR="${WORKSPACE_DIR:-$HOME/forge-admin}"
 # Any non-empty value for -u works; GHCR validates the PAT scope, not the
 # user. Keep a memorable shared identity so docker login log lines are
 # distinguishable in corp audit trails.
