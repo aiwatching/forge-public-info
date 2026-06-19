@@ -58,12 +58,13 @@ IMAGE="${IMAGE:-ghcr.io/aiwatching/forge-workspace:latest}"
 CONTAINER="${CONTAINER:-forge}"
 HOST_DATA_DIR="${HOST_DATA_DIR:-$HOME/forge-data}"
 PROJECT_DIR="${PROJECT_DIR:-}"
-# Default ports. Override if 18403/18080/18404 are in use, e.g.
-#   FORGE_PORT=18503 NEKO_PORT=18180 TERMINAL_PORT=18504 ./install-forge.sh ...
+# Default ports. Forge's terminal + browser-bridge are reached via the
+# main Forge UI port (same-origin WebSocket), so we ONLY publish 8403 +
+# 8080 + the Neko UDP range. Matches what _regen-compose.sh emits for
+# admin-mode workspaces - keeps behavior identical between install-forge
+# and install-personal.
 FORGE_PORT="${FORGE_PORT:-18403}"
 NEKO_PORT="${NEKO_PORT:-18080}"
-TERMINAL_PORT="${TERMINAL_PORT:-18404}"
-BRIDGE_PORT="${BRIDGE_PORT:-18407}"
 UDP_LO="${UDP_LO:-59000}"
 UDP_HI="${UDP_HI:-59099}"
 # Initial admin password. Forge prompts to change on first login.
@@ -236,8 +237,6 @@ docker run -d \
   --init \
   -p "${FORGE_PORT}:8403" \
   -p "${NEKO_PORT}:8080" \
-  -p "${TERMINAL_PORT}:8404" \
-  -p "${BRIDGE_PORT}:8407" \
   -p "${UDP_LO}-${UDP_HI}:${UDP_LO}-${UDP_HI}/udp" \
   -v "$HOST_DATA_DIR:/data" \
   $PROJECT_MOUNT \
