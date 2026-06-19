@@ -30,9 +30,34 @@
 set -euo pipefail
 
 # --- Config (overridable via env) ---
+#
+# Doable via env / CLI flags (the only Forge container knobs that exist):
+#   IMAGE                ghcr.io/aiwatching/forge-workspace:latest
+#   CONTAINER            forge                (also used as container name)
+#   HOST_DATA_DIR        $HOME/forge-data     (persisted across upgrades)
+#   PROJECT_DIR          (unset)              host path bind-mounted to
+#                                             /data/project; lets Forge see
+#                                             a pre-existing project on disk
+#                                             without having to copy it in
+#   FORGE_PORT           18403                host port for Forge UI
+#   NEKO_PORT            18080                host port for Neko (remote browser)
+#   TERMINAL_PORT        18404                host port for Forge terminal WS
+#   BRIDGE_PORT          18407                host port for Forge browser-bridge
+#   UDP_LO/UDP_HI        59000/59099          Neko WebRTC UDP range
+#   INIT_ADMIN_PASSWORD  admin                first-login admin password
+#                                             (change it in the UI after)
+#   FORGE_HTTP_PROXY     (unset)              corp HTTP(S) proxy URL, if any
+#
+# NOT doable via env (Forge wizard fields - you fill these in the UI on
+# first login, then Forge stores them in /data/forge/settings.yaml):
+#   display name, work email, project roots (the wizard offers them anyway,
+#   but uses your PROJECT_DIR mount as an option), GitLab token, Enterprise
+#   key. The Enterprise key is shared on the team channel.
+
 IMAGE="${IMAGE:-ghcr.io/aiwatching/forge-workspace:latest}"
 CONTAINER="${CONTAINER:-forge}"
 HOST_DATA_DIR="${HOST_DATA_DIR:-$HOME/forge-data}"
+PROJECT_DIR="${PROJECT_DIR:-}"
 # Default ports. Override if 18403/18080/18404 are in use, e.g.
 #   FORGE_PORT=18503 NEKO_PORT=18180 TERMINAL_PORT=18504 ./install-forge.sh ...
 FORGE_PORT="${FORGE_PORT:-18403}"
@@ -46,6 +71,54 @@ INIT_ADMIN_PASSWORD="${INIT_ADMIN_PASSWORD:-admin}"
 # GHCR login user - any non-empty string; GHCR validates the PAT scope, not
 # this string. Keep a memorable shared identity for audit-log readability.
 DOCKER_LOGIN_USER="${DOCKER_LOGIN_USER:-forge-corp-user}"
+
+# --- Parse CLI flags (PAT is positional; the rest mirror the env names) ---
+# Accept either positional <PAT> or --pat <PAT> for ergonomic curl|bash:
+#   curl ... | bash -s -- ghp_xxx --project ~/myproj --port 18503
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project|--project-dir)         PROJECT_DIR="$2"; shift 2 ;;
+    --name|--container)              CONTAINER="$2"; shift 2 ;;
+    --data-dir|--host-data-dir)      HOST_DATA_DIR="$2"; shift 2 ;;
+    --port|--forge-port)             FORGE_PORT="$2"; shift 2 ;;
+    --neko-port)                     NEKO_PORT="$2"; shift 2 ;;
+    --terminal-port)                 TERMINAL_PORT="$2"; shift 2 ;;
+    --bridge-port)                   BRIDGE_PORT="$2"; shift 2 ;;
+    --admin-password)                INIT_ADMIN_PASSWORD="$2"; shift 2 ;;
+    --http-proxy)                    FORGE_HTTP_PROXY="$2"; shift 2 ;;
+    --pat)                           ARGS+=("$2"); shift 2 ;;
+    -h|--help)
+      cat <<HELP
+Usage: install-forge.sh <PAT> [options]
+
+Options (all also overridable via env vars of the same name):
+  --project, --project-dir <path>   host path to mount at /data/project
+                                    (so Forge sees your existing project)
+  --name, --container <name>        container name (default: forge)
+  --data-dir <path>                 persistent data dir (default: ~/forge-data)
+  --port <num>                      Forge UI host port (default: 18403)
+  --neko-port <num>                 Neko host port (default: 18080)
+  --terminal-port <num>             Forge terminal host port (default: 18404)
+  --bridge-port <num>               browser-bridge host port (default: 18407)
+  --admin-password <pw>             first-login admin password (default: admin)
+  --http-proxy <url>                outbound HTTP(S) proxy URL (corp ZTNA)
+  -h, --help                        show this help
+
+Forge UI wizard fields (display name, email, GitLab token, Enterprise key)
+are entered AFTER first login in the Forge UI. They live in /data/forge/.
+
+Examples:
+  install-forge.sh ghp_xxx
+  install-forge.sh ghp_xxx --project ~/IdeaProjects/myapp
+  install-forge.sh ghp_xxx --name forge-projectB --port 18503 --neko-port 18180
+HELP
+      exit 0
+      ;;
+    *)                               ARGS+=("$1"); shift ;;
+  esac
+done
+set -- "${ARGS[@]}"
 
 # --- Pretty output ---
 c_red() { printf '\033[31m%s\033[0m' "$*"; }
@@ -115,6 +188,25 @@ fi
 mkdir -p "$HOST_DATA_DIR"
 
 # --- 6. Start the container ---
+# Expand a leading ~ in PROJECT_DIR (bash doesn't expand it inside quoted
+# args at run time) and verify the host path exists.
+if [ -n "$PROJECT_DIR" ]; then
+  case "$PROJECT_DIR" in
+    "~")   PROJECT_DIR="$HOME" ;;
+    "~/"*) PROJECT_DIR="$HOME/${PROJECT_DIR#~/}" ;;
+  esac
+  if [ ! -d "$PROJECT_DIR" ]; then
+    fail "PROJECT_DIR ($PROJECT_DIR) does not exist on the host.
+
+Pass a host path that already exists, or omit --project to use the empty
+default at \$HOST_DATA_DIR/forge/project."
+  fi
+  PROJECT_MOUNT="-v $PROJECT_DIR:/data/project"
+  printf '  - mounting project: %s -> /data/project\n' "$PROJECT_DIR"
+else
+  PROJECT_MOUNT=""
+fi
+
 step "Starting $CONTAINER on http://localhost:$FORGE_PORT"
 # Env contract this mirrors what _regen-compose.sh emits for a workspace
 # service in admin mode, minus everything admin-specific. Each Neko knob is
@@ -148,6 +240,7 @@ docker run -d \
   -p "${BRIDGE_PORT}:8407" \
   -p "${UDP_LO}-${UDP_HI}:${UDP_LO}-${UDP_HI}/udp" \
   -v "$HOST_DATA_DIR:/data" \
+  $PROJECT_MOUNT \
   -e NEKO_MEMBER_PROVIDER=multiuser \
   -e NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD=admin \
   -e NEKO_MEMBER_MULTIUSER_USER_PASSWORD=forge \
@@ -200,6 +293,13 @@ $(c_grn 'OK') Forge is running.
 
 First-time login: user $(c_grn 'admin'), password $(c_grn "$INIT_ADMIN_PASSWORD")
 (Change this in Forge UI Settings after signing in.)
+
+After signing in, the Forge wizard asks for:
+  - Enterprise key  (paste the fortinet key shared on the team channel)
+  - Display name + email   (email must be @fortinet.com)
+  - Project roots          (point at /data/project if you used --project,
+                            otherwise pick any path under /data)
+  - GitLab token           (api + read_api scope, <= 200d expiry)
 
 Day-to-day:
   docker logs -f $CONTAINER     # follow logs
