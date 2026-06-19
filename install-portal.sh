@@ -232,8 +232,8 @@ PORTAL_LOGIN_USERNAME=$SLUG
 PORTAL_LOGIN_PASSWORD=$FORGE_PASSWORD
 
 # Admin console for management (add/remove workspaces, change limits, ...).
-# Same root URL as the bare admin install - the homepage IS the admin console.
-# Most users never need this in portal mode; open ${PORTAL_URL} above instead.
+# Same root URL as install-admin - the homepage IS the admin console.
+# Most users never need this in portal mode; open PORTAL_URL above instead.
 ADMIN_URL=http://localhost:$HOST_PORT/
 ADMIN_EMAIL=$ADMIN_EMAIL
 ADMIN_PASSWORD=$ADMIN_PASSWORD
