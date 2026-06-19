@@ -91,13 +91,36 @@ If the PAT was recently rotated, ask your admin for the latest one."
 fi
 printf '  - login succeeded\n'
 
-# --- 4. Pull image ---
+# --- 4. Pull images (admin AND workspace) ---
 step "Pulling $IMAGE"
 if ! docker pull "$IMAGE"; then
   fail "docker pull failed.
 
 If you see 'denied' or 'unauthorized', your PAT does not have access to
 the package. Ask your admin to add you to the package or rotate the PAT."
+fi
+
+# Pre-pull the workspace image too, BEFORE admin starts spawning provision
+# attempts. The workspace image is ~2GB; on first provision, docker compose
+# up -d would synchronously pull it inside admin's SSE stream, but with
+# zero progress visible to the operator - so a slow pull would manifest
+# as "Compose override: ... make: Error 1" with no useful detail, the
+# operator would retry, the second attempt found the image cached and
+# "worked". Pre-pulling here makes the first provision identical to the
+# second and surfaces pull failures right where they belong: at install
+# time, with a progress bar.
+WORKSPACE_IMAGE="${WORKSPACE_IMAGE:-ghcr.io/aiwatching/forge-workspace:latest}"
+step "Pulling $WORKSPACE_IMAGE  (linux/amd64, ~2GB - takes 2-3 min)"
+# --platform=linux/amd64 because the workspace image is published amd64-only
+# (Chromium under Neko needs native amd64; Apple Silicon runs it via Rosetta).
+# Without the explicit platform, docker compose on arm64 hosts would error
+# on first up with "no matching manifest for linux/arm64/v8".
+if ! docker pull --platform=linux/amd64 "$WORKSPACE_IMAGE"; then
+  fail "workspace image pull failed.
+
+Same fix as the admin pull above (PAT scope / rotation). If admin pulled
+fine but this one didn't, the workspace image might be a separate package
+in GHCR that your PAT doesn't cover - ask your admin to add the package."
 fi
 
 # --- 5. Replace existing container if any ---
