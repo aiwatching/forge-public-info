@@ -198,6 +198,25 @@ else
   printf '  - using %s (FORGE_SUBNET env override)\n' "$FORGE_SUBNET"
 fi
 
+# --- Create the docker network UP FRONT so the bridge gateway exists ---
+# tinyproxy needs to bind to <gateway>:8888. The gateway IP is the .1 of
+# the workspace subnet, which only EXISTS on the host once docker creates
+# the bridge for forge-workspace-net. provision-user.sh creates that
+# network on first workspace start - too late for tinyproxy to bind here.
+# Create it eagerly so the bridge interface is live before tinyproxy
+# tries to listen.
+TINYPROXY_LISTEN=$(printf '%s' "$FORGE_SUBNET" | sed -E 's#\.0/16$#\.1#')
+
+if ! docker network inspect forge-workspace-net >/dev/null 2>&1; then
+  step "Creating docker network forge-workspace-net ($FORGE_SUBNET, gw $TINYPROXY_LISTEN)"
+  docker network create \
+    --subnet "$FORGE_SUBNET" \
+    --gateway "$TINYPROXY_LISTEN" \
+    forge-workspace-net >/dev/null
+else
+  printf '  - docker network forge-workspace-net already exists\n'
+fi
+
 # --- tinyproxy setup (host-side HTTP proxy for ZTNA bypass) ---
 # Computed: install if (mode=yes) OR (mode=auto AND Linux). Sets the
 # LOCAL_HTTP_PROXY var below which gets passed into admin's env, where
@@ -208,9 +227,6 @@ fi
 # container even though host can reach them - host's process-level
 # routing goes through ZTNA tunnel, docker bridge SNAT can't.
 LOCAL_HTTP_PROXY=""
-
-# Gateway IP is the .1 of the workspace subnet we picked above.
-TINYPROXY_LISTEN=$(printf '%s' "$FORGE_SUBNET" | sed -E 's#\.0/16$#\.1#')
 TINYPROXY_PORT="${TINYPROXY_PORT:-8888}"
 
 want_tinyproxy=no
@@ -273,16 +289,31 @@ ConnectPort 22
 LogLevel Info
 EOF
     sudo systemctl enable tinyproxy >/dev/null 2>&1 || true
-    sudo systemctl restart tinyproxy
-
-    # Smoke check: is tinyproxy actually listening on the expected ip:port.
-    if ss -lnt 2>/dev/null | grep -q "$TINYPROXY_LISTEN:$TINYPROXY_PORT"; then
-      printf '  - tinyproxy listening on %s:%s\n' "$TINYPROXY_LISTEN" "$TINYPROXY_PORT"
-      LOCAL_HTTP_PROXY="http://$TINYPROXY_LISTEN:$TINYPROXY_PORT"
+    # Pre-check: the bind IP must exist on a host interface NOW. systemd's
+    # default tinyproxy timeout is short, and binding to a non-existent IP
+    # makes the daemon hang trying to listen, exit code 1 with no useful
+    # log. Sanity-check before the restart so we fail fast with context.
+    if ! ip -4 -o addr show 2>/dev/null | awk '{print $4}' | grep -q "^$TINYPROXY_LISTEN/"; then
+      printf '  %s host has no interface with IP %s yet — tinyproxy bind would fail.\n' \
+        "$(c_ylw '!')" "$TINYPROXY_LISTEN"
+      printf '    The docker network step above should have created it; check:\n'
+      printf '      docker network inspect forge-workspace-net\n'
+      printf '      ip -4 addr show\n'
+      printf '    Skipping tinyproxy restart — admin will start without proxy.\n'
+    elif sudo systemctl restart tinyproxy; then
+      # Give it ~2s to actually bind before checking.
+      sleep 2
+      if ss -lnt 2>/dev/null | grep -q "$TINYPROXY_LISTEN:$TINYPROXY_PORT"; then
+        printf '  - tinyproxy listening on %s:%s\n' "$TINYPROXY_LISTEN" "$TINYPROXY_PORT"
+        LOCAL_HTTP_PROXY="http://$TINYPROXY_LISTEN:$TINYPROXY_PORT"
+      else
+        printf '  %s tinyproxy restart returned OK but no listener visible. Last logs:\n' "$(c_ylw '!')"
+        sudo journalctl -u tinyproxy -n 10 --no-pager 2>/dev/null | sed 's/^/      /'
+      fi
     else
-      printf '  %s tinyproxy installed but not listening on %s:%s yet; admin will start without proxy.\n' \
-        "$(c_ylw '!')" "$TINYPROXY_LISTEN" "$TINYPROXY_PORT"
-      printf '    Check:  sudo systemctl status tinyproxy\n'
+      printf '  %s tinyproxy restart failed. Last logs:\n' "$(c_ylw '!')"
+      sudo journalctl -u tinyproxy -n 15 --no-pager 2>/dev/null | sed 's/^/      /'
+      printf '    Admin will start without proxy (corp-internal targets may time out).\n'
     fi
   fi
 fi
