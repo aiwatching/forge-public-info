@@ -39,6 +39,19 @@ DOCKER_LOGIN_USER="${DOCKER_LOGIN_USER:-forge-corp-user}"
 # operator explicitly set FORGE_SUBNET.
 FORGE_SUBNET="${FORGE_SUBNET:-}"
 
+# tinyproxy: a host-side HTTP forward proxy bound to the docker bridge
+# gateway. Workspace containers send their HTTP(S) traffic to it; the
+# host process then takes the request out via the host's normal routing
+# (including any FortiClient ZTNA tunnel), reaching corp-internal targets
+# the container can't hit directly from docker NAT.
+#
+# Default: install + start on Linux when the operator hasn't said
+# otherwise. Skip on Mac (FortiClient on Mac uses a different routing
+# model that doesn't need this). Operator can pass --no-tinyproxy if
+# they really don't want host-level changes, or --with-tinyproxy to
+# force install on Mac.
+TINYPROXY_MODE="${TINYPROXY_MODE:-auto}"
+
 # --- Pretty output ---
 c_red()  { printf '\033[31m%s\033[0m' "$*"; }
 c_grn()  { printf '\033[32m%s\033[0m' "$*"; }
@@ -48,13 +61,41 @@ step()   { printf '\n%s %s\n' "$(c_grn '>')" "$*"; }
 fail()   { printf '\n%s %s\n' "$(c_red 'x')" "$*" >&2; exit 1; }
 
 # --- 1. Args ---
-PAT="${1:-${GHCR_PAT:-}}"
+# Positional PAT plus a couple of flags that flip tinyproxy behavior.
+# Order doesn't matter: install-personal.sh ghp_xxx --no-tinyproxy
+# works the same as --no-tinyproxy ghp_xxx.
+PAT=""
+for arg in "$@"; do
+  case "$arg" in
+    --no-tinyproxy)   TINYPROXY_MODE=no  ;;
+    --with-tinyproxy) TINYPROXY_MODE=yes ;;
+    -h|--help)
+      cat <<HELP
+Usage: install-personal.sh <PAT> [flags]
+
+Flags:
+  --no-tinyproxy     Don't install/configure host tinyproxy. Use when
+                     you don't need workspace containers to reach corp-
+                     internal targets (no ZTNA / not in corp network).
+  --with-tinyproxy   Force install tinyproxy even on macOS (default is
+                     to install on Linux only).
+  -h, --help         Show this help.
+
+Default behavior (no flag): install tinyproxy on Linux, skip on macOS.
+
+Env var equivalents: TINYPROXY_MODE=auto|yes|no.
+HELP
+      exit 0 ;;
+    *) [ -z "$PAT" ] && PAT="$arg" ;;
+  esac
+done
+PAT="${PAT:-${GHCR_PAT:-}}"
 if [ -z "$PAT" ]; then
   cat >&2 <<EOF
 $(c_red 'x') Missing PAT.
 
 Usage:
-  $0 <github-PAT>
+  $0 <github-PAT> [--no-tinyproxy|--with-tinyproxy]
 
 Or set env:
   GHCR_PAT=ghp_xxx $0
@@ -157,6 +198,95 @@ else
   printf '  - using %s (FORGE_SUBNET env override)\n' "$FORGE_SUBNET"
 fi
 
+# --- tinyproxy setup (host-side HTTP proxy for ZTNA bypass) ---
+# Computed: install if (mode=yes) OR (mode=auto AND Linux). Sets the
+# LOCAL_HTTP_PROXY var below which gets passed into admin's env, where
+# ensureLocalServer() picks it up and writes it onto the local-server
+# DB row. Workspace containers then inherit HTTP(S)_PROXY=<gateway:8888>
+# via _regen-compose's httpProxyPrefix. Without this, corp-internal
+# targets (e.g. dops-git106.fortinet-us.com) time out from inside the
+# container even though host can reach them - host's process-level
+# routing goes through ZTNA tunnel, docker bridge SNAT can't.
+LOCAL_HTTP_PROXY=""
+
+# Gateway IP is the .1 of the workspace subnet we picked above.
+TINYPROXY_LISTEN=$(printf '%s' "$FORGE_SUBNET" | sed -E 's#\.0/16$#\.1#')
+TINYPROXY_PORT="${TINYPROXY_PORT:-8888}"
+
+want_tinyproxy=no
+case "$TINYPROXY_MODE" in
+  yes) want_tinyproxy=yes ;;
+  no)  want_tinyproxy=no  ;;
+  auto)
+    # Default-on for Linux. On macOS, FortiClient ZTNA uses transparent
+    # interception of host process traffic (utun + per-process routing),
+    # and docker bridge traffic doesn't transit those interfaces - so
+    # tinyproxy there wouldn't get on the ZTNA path either. We skip
+    # Mac to avoid installing something that won't help.
+    case "$(uname -s)" in
+      Linux) want_tinyproxy=yes ;;
+      *)     want_tinyproxy=no
+             printf '  - %s (non-Linux host; pass --with-tinyproxy to override)\n' \
+               "$(c_dim 'tinyproxy: skipping')" ;;
+    esac ;;
+  *) fail "TINYPROXY_MODE must be one of: auto, yes, no (got: $TINYPROXY_MODE)" ;;
+esac
+
+if [ "$want_tinyproxy" = yes ]; then
+  step "Configuring host tinyproxy on $TINYPROXY_LISTEN:$TINYPROXY_PORT"
+
+  # Pick the apt/dnf/pacman package manager that's actually present.
+  PM=""
+  for c in apt-get dnf pacman zypper; do
+    if command -v "$c" >/dev/null 2>&1; then PM="$c"; break; fi
+  done
+  if [ -z "$PM" ]; then
+    printf '  %s no known package manager found - skipping install. Set up tinyproxy manually if needed.\n' \
+      "$(c_ylw '!')"
+  else
+    if command -v tinyproxy >/dev/null 2>&1; then
+      printf '  - tinyproxy already installed\n'
+    else
+      printf '  - installing tinyproxy via %s (needs sudo)\n' "$PM"
+      case "$PM" in
+        apt-get) sudo apt-get update -qq && sudo apt-get install -y -qq tinyproxy ;;
+        dnf)     sudo dnf install -y tinyproxy ;;
+        pacman)  sudo pacman -S --noconfirm tinyproxy ;;
+        zypper)  sudo zypper install -y tinyproxy ;;
+      esac
+    fi
+
+    # Write a corp-friendly config: bound to docker bridge gateway, accepts
+    # the RFC1918 docker bridge subnets, allows HTTPS CONNECT to 443 + SSH
+    # CONNECT to 22 (git clone over SSH).
+    sudo tee /etc/tinyproxy/tinyproxy.conf >/dev/null <<EOF
+User tinyproxy
+Group tinyproxy
+Port $TINYPROXY_PORT
+Listen $TINYPROXY_LISTEN
+Timeout 600
+Allow 172.16.0.0/12
+Allow 192.168.0.0/16
+Allow 10.0.0.0/8
+ConnectPort 443
+ConnectPort 22
+LogLevel Info
+EOF
+    sudo systemctl enable tinyproxy >/dev/null 2>&1 || true
+    sudo systemctl restart tinyproxy
+
+    # Smoke check: is tinyproxy actually listening on the expected ip:port.
+    if ss -lnt 2>/dev/null | grep -q "$TINYPROXY_LISTEN:$TINYPROXY_PORT"; then
+      printf '  - tinyproxy listening on %s:%s\n' "$TINYPROXY_LISTEN" "$TINYPROXY_PORT"
+      LOCAL_HTTP_PROXY="http://$TINYPROXY_LISTEN:$TINYPROXY_PORT"
+    else
+      printf '  %s tinyproxy installed but not listening on %s:%s yet; admin will start without proxy.\n' \
+        "$(c_ylw '!')" "$TINYPROXY_LISTEN" "$TINYPROXY_PORT"
+      printf '    Check:  sudo systemctl status tinyproxy\n'
+    fi
+  fi
+fi
+
 step "Starting $CONTAINER on http://localhost:$HOST_PORT"
 # Resolve the docker daemon socket on the host. Docker Desktop on Mac/Windows
 # always exposes a user-level socket at ~/.docker/run/docker.sock and that
@@ -216,6 +346,7 @@ docker run -d \
   $DOCKER_AUTH_MOUNT \
   -e "WORKSPACE_DIR=$WORKSPACE_DIR" \
   -e "FORGE_SUBNET=$FORGE_SUBNET" \
+  -e "LOCAL_HTTP_PROXY=$LOCAL_HTTP_PROXY" \
   "$IMAGE" >/dev/null
 
 # Give the entrypoint a moment to land, then show its banner.
