@@ -19,7 +19,7 @@
 #   - VPN / on-network if dops-git106 isn't directly routable
 #
 # What this script does:
-#   1. Clones (or fast-forwards) fortinac-pd at the fortinac-kb-branch
+#   1. Clones (or fast-forwards) fortinac-pd at the fortinet-kb-branch
 #   2. Invokes the in-repo installer .kb-hooks/install.sh, which sets up:
 #        - kb CLI on PATH               (~/.local/bin/kb)
 #        - fortinac-kb Claude Code skill (~/.claude/skills/fortinac-kb)
@@ -34,7 +34,7 @@ set -euo pipefail
 
 # --- Config (overridable via env) ---
 KB_REPO="${KB_REPO:-git@dops-git106.fortinet-us.com:fortinac/fortinac-pd.git}"
-KB_BRANCH="${KB_BRANCH:-fortinac-kb-branch}"
+KB_BRANCH="${KB_BRANCH:-fortinet-kb-branch}"
 KB_DIR="${KB_DIR:-$HOME/IdeaProjects/Fortinac-pd}"
 
 echo "FortiNAC KB Tools bootstrap"
