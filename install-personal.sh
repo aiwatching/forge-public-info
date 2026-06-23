@@ -435,6 +435,7 @@ docker run -d \
   -e "WORKSPACE_DIR=$WORKSPACE_DIR" \
   -e "FORGE_SUBNET=$FORGE_SUBNET" \
   -e "LOCAL_HTTP_PROXY=$LOCAL_HTTP_PROXY" \
+  ${NEKO_NAT_IP:+-e "LOCAL_HOST=$NEKO_NAT_IP"} \
   "$IMAGE" >/dev/null
 
 # Give the entrypoint a moment to land, then show its banner.
