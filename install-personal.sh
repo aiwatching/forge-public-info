@@ -172,6 +172,63 @@ fi
 
 mkdir -p "$WORKSPACE_DIR"
 
+# --- Auto-detect host LAN IP for NEKO_NAT_IP -----------------------------
+# Neko advertises ICE candidates with the IP set in NEKO_WEBRTC_NAT1TO1.
+# compose/users.override.yml falls back to 127.0.0.1 when NEKO_NAT_IP is
+# unset, which makes browser-on-another-machine WebRTC fail (browser
+# tries to dial its OWN localhost UDP port -> ICE failed -> stuck on
+# Neko login). Detect the host's outbound interface IP and write it to
+# $WORKSPACE_DIR/.env so `docker compose` (run from within admin) reads
+# it automatically.
+#
+# Honor an existing NEKO_NAT_IP in env (operator override) or in the
+# already-present .env (re-runs of install-personal.sh should NOT
+# clobber a manually-tuned value).
+ENV_FILE="$WORKSPACE_DIR/.env"
+existing_nat=""
+if [ -f "$ENV_FILE" ] && grep -q '^NEKO_NAT_IP=' "$ENV_FILE"; then
+  existing_nat=$(grep '^NEKO_NAT_IP=' "$ENV_FILE" | tail -1 | cut -d= -f2-)
+fi
+if [ -n "${NEKO_NAT_IP:-}" ]; then
+  printf '  - NEKO_NAT_IP=%s (from env)\n' "$NEKO_NAT_IP"
+elif [ -n "$existing_nat" ] && [ "$existing_nat" != "127.0.0.1" ]; then
+  NEKO_NAT_IP="$existing_nat"
+  printf '  - NEKO_NAT_IP=%s (preserved from %s)\n' "$NEKO_NAT_IP" "$ENV_FILE"
+else
+  # Use the IP of the interface that routes to a public address. Falls
+  # back to the first non-loopback IPv4 on the host if `ip route get`
+  # isn't available (BSD-style hosts) or returns nothing.
+  detected=""
+  if command -v ip >/dev/null 2>&1; then
+    detected=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
+  fi
+  if [ -z "$detected" ]; then
+    detected=$(hostname -I 2>/dev/null | awk '{print $1}')
+  fi
+  if [ -z "$detected" ] || [ "$detected" = "127.0.0.1" ]; then
+    printf '%s could not auto-detect host LAN IP; leaving NEKO_NAT_IP unset.\n' "$(c_ylw '!')"
+    printf '   Remote-access WebRTC will be broken until you set NEKO_NAT_IP\n'
+    printf '   in %s and recycle each workspace.\n' "$ENV_FILE"
+    NEKO_NAT_IP=""
+  else
+    NEKO_NAT_IP="$detected"
+    printf '  - NEKO_NAT_IP=%s (auto-detected)\n' "$NEKO_NAT_IP"
+  fi
+fi
+
+# Write NEKO_NAT_IP into $WORKSPACE_DIR/.env (idempotent — replace any
+# existing line). `docker compose` reads .env from project root.
+if [ -n "$NEKO_NAT_IP" ]; then
+  touch "$ENV_FILE"
+  if grep -q '^NEKO_NAT_IP=' "$ENV_FILE"; then
+    # GNU sed (Linux) — install-personal.sh is Linux-only (`fail` if
+    # not Linux earlier in the script).
+    sed -i "s|^NEKO_NAT_IP=.*|NEKO_NAT_IP=$NEKO_NAT_IP|" "$ENV_FILE"
+  else
+    printf 'NEKO_NAT_IP=%s\n' "$NEKO_NAT_IP" >> "$ENV_FILE"
+  fi
+fi
+
 # --- 6. Start the new container ---
 # Pick a workspace subnet. If the operator passed FORGE_SUBNET, trust it.
 # Otherwise scan the other docker networks' subnets and pick the lowest
