@@ -196,14 +196,22 @@ elif [ -n "$existing_nat" ] && [ "$existing_nat" != "127.0.0.1" ]; then
   printf '  - NEKO_NAT_IP=%s (preserved from %s)\n' "$NEKO_NAT_IP" "$ENV_FILE"
 else
   # Use the IP of the interface that routes to a public address. Falls
-  # back to the first non-loopback IPv4 on the host if `ip route get`
-  # isn't available (BSD-style hosts) or returns nothing.
+  # back per-platform. EVERY substitution here is suffixed with `|| true`
+  # because the script runs under `set -euo pipefail`: on macOS
+  # `hostname -I` is an illegal option and `ip` doesn't exist, and under
+  # pipefail a failing stage would otherwise abort the whole installer
+  # right after the image pulls (admin container never gets created).
   detected=""
   if command -v ip >/dev/null 2>&1; then
-    detected=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)
+    detected=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1 || true)
   fi
-  if [ -z "$detected" ]; then
-    detected=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if [ -z "$detected" ] && command -v hostname >/dev/null 2>&1; then
+    detected=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+  fi
+  # macOS / BSD: derive the IP of the interface used for the default route.
+  if [ -z "$detected" ] && command -v route >/dev/null 2>&1 && command -v ipconfig >/dev/null 2>&1; then
+    _if=$(route -n get default 2>/dev/null | awk '/interface:/ {print $2}' | head -1 || true)
+    [ -n "$_if" ] && detected=$(ipconfig getifaddr "$_if" 2>/dev/null || true)
   fi
   if [ -z "$detected" ] || [ "$detected" = "127.0.0.1" ]; then
     printf '%s could not auto-detect host LAN IP; leaving NEKO_NAT_IP unset.\n' "$(c_ylw '!')"
@@ -218,15 +226,15 @@ fi
 
 # Write NEKO_NAT_IP into $WORKSPACE_DIR/.env (idempotent — replace any
 # existing line). `docker compose` reads .env from project root.
+# Portable rewrite (grep-out the old line, append the new one) instead of
+# `sed -i` — BSD sed on macOS needs `sed -i ''` while GNU sed rejects
+# that, so avoid in-place sed entirely.
 if [ -n "$NEKO_NAT_IP" ]; then
   touch "$ENV_FILE"
-  if grep -q '^NEKO_NAT_IP=' "$ENV_FILE"; then
-    # GNU sed (Linux) — install-personal.sh is Linux-only (`fail` if
-    # not Linux earlier in the script).
-    sed -i "s|^NEKO_NAT_IP=.*|NEKO_NAT_IP=$NEKO_NAT_IP|" "$ENV_FILE"
-  else
-    printf 'NEKO_NAT_IP=%s\n' "$NEKO_NAT_IP" >> "$ENV_FILE"
-  fi
+  tmp_env=$(mktemp)
+  grep -v '^NEKO_NAT_IP=' "$ENV_FILE" > "$tmp_env" 2>/dev/null || true
+  printf 'NEKO_NAT_IP=%s\n' "$NEKO_NAT_IP" >> "$tmp_env"
+  mv "$tmp_env" "$ENV_FILE"
 fi
 
 # --- 6. Start the new container ---
