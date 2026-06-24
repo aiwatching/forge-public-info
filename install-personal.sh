@@ -417,24 +417,26 @@ If you have multiple docker contexts (\`docker context ls\`), switch to
 fi
 printf '  - sibling container can reach daemon via this socket\n'
 
-# Mount the host's docker auth so the CLI inside admin can hand the GHCR
-# bearer token to the host daemon when it pulls the forge-workspace image.
-# Without this, `docker compose up` from inside admin gets 401 on private
-# ghcr.io tags. Read-only so admin can't mutate the host's credentials.
-DOCKER_AUTH_MOUNT=""
-if [ -f "$HOME/.docker/config.json" ]; then
-  DOCKER_AUTH_MOUNT="-v $HOME/.docker/config.json:/root/.docker/config.json:ro"
-fi
+# Forward the PAT so the admin container can authenticate to GHCR itself
+# (its entrypoint does `docker login ghcr.io`). We deliberately DON'T
+# mount the host's ~/.docker/config.json: on macOS that file uses
+# "credsStore": "desktop" (token in the Keychain via
+# docker-credential-desktop), and that helper binary isn't in the admin
+# image — so `docker pull` of a private tag from inside admin dies with
+# 'docker-credential-desktop: executable file not found'. A self-contained
+# login inside the container writes a plain token and works on Linux and
+# macOS alike. PAT is passed via env (-e), never written to disk here.
 docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
   -p "${HOST_PORT}:4000" \
   -v "$WORKSPACE_DIR:$WORKSPACE_DIR" \
   -v "$SOCK_HOST:/var/run/docker.sock" \
-  $DOCKER_AUTH_MOUNT \
   -e "WORKSPACE_DIR=$WORKSPACE_DIR" \
   -e "FORGE_SUBNET=$FORGE_SUBNET" \
   -e "LOCAL_HTTP_PROXY=$LOCAL_HTTP_PROXY" \
+  -e "GHCR_PAT=$PAT" \
+  -e "GHCR_LOGIN_USER=$DOCKER_LOGIN_USER" \
   ${NEKO_NAT_IP:+-e "LOCAL_HOST=$NEKO_NAT_IP"} \
   "$IMAGE" >/dev/null
 
