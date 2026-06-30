@@ -37,22 +37,26 @@ fi
 
 # Mount the docker socket so the Hub can start/stop the wiki container (forge-kb
 # local mode) from the console. Skip with NO_DOCKER=1 (wiki control disabled).
+# Let the Hub pull private images (console Start/Update) without a manual
+# `docker pull`. Two ways, GHCR_TOKEN wins:
+#   GHCR_TOKEN=<ghcr PAT, read:packages> [GHCR_USER=..] ./start-foundry.sh
+#     → the Hub does `docker login ghcr.io` itself (works through a host credStore).
+#   else → inherit the host's existing registry login (mounted read-only; a host
+#     credStore won't carry — use GHCR_TOKEN in that case).
 DOCKER_MOUNT=""
+GHCR_ENV=""
 if [ -z "${NO_DOCKER:-}" ] && [ -S "$SOCK" ]; then
   DOCKER_MOUNT="-v $SOCK:/var/run/docker.sock -e FOUNDRY_WIKI_PORT=$WIKI_PORT"
-  # Give the Hub this host's registry login so it can pull private images itself
-  # (so console Start/Update really pulls, no manual `docker pull`). Read-only.
-  # NB: if your docker login uses a credStore/credHelpers, the mounted config
-  # references a helper binary absent in the Hub → pull falls back to cache;
-  # in that case `docker login ghcr.io -u <user> -p <token>` writes plain creds.
-  DCFG="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
-  if [ -f "$DCFG" ]; then
-    DOCKER_MOUNT="$DOCKER_MOUNT -v $DCFG:/root/.docker/config.json:ro"
+  if [ -n "${GHCR_TOKEN:-}" ]; then
+    GHCR_ENV="-e FOUNDRY_GHCR_TOKEN=$GHCR_TOKEN -e FOUNDRY_GHCR_USER=${GHCR_USER:-foundry}"
+  else
+    DCFG="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+    [ -f "$DCFG" ] && DOCKER_MOUNT="$DOCKER_MOUNT -v $DCFG:/root/.docker/config.json:ro"
   fi
 fi
 
 docker run -d --name "$NAME" --restart unless-stopped \
-  -p "$PORT:$PORT" -v "$VOL:/data" $DOCKER_MOUNT \
+  -p "$PORT:$PORT" -v "$VOL:/data" $DOCKER_MOUNT $GHCR_ENV \
   ${FOUNDRY_ADMIN_USERNAME:+-e FOUNDRY_ADMIN_USERNAME="$FOUNDRY_ADMIN_USERNAME"} \
   ${FOUNDRY_ADMIN_PASSWORD:+-e FOUNDRY_ADMIN_PASSWORD="$FOUNDRY_ADMIN_PASSWORD"} \
   "$IMAGE"
