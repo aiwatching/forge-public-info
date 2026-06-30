@@ -59,6 +59,7 @@ docker run -d --name "$NAME" --restart unless-stopped \
   -p "$PORT:$PORT" -v "$VOL:/data" $DOCKER_MOUNT $GHCR_ENV \
   ${FOUNDRY_ADMIN_USERNAME:+-e FOUNDRY_ADMIN_USERNAME="$FOUNDRY_ADMIN_USERNAME"} \
   ${FOUNDRY_ADMIN_PASSWORD:+-e FOUNDRY_ADMIN_PASSWORD="$FOUNDRY_ADMIN_PASSWORD"} \
+  ${FOUNDRY_WALLET_KEY:+-e FOUNDRY_WALLET_KEY="$FOUNDRY_WALLET_KEY"} \
   "$IMAGE"
 
 echo "✓ → http://localhost:$PORT/   (console → Wiki → Start launches the wiki on :$WIKI_PORT)"
