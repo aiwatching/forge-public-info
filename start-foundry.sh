@@ -14,6 +14,8 @@ IMAGE="${IMAGE:-ghcr.io/aiwatching/foundry-hub:latest}"
 NAME="${NAME:-foundry-hub}"
 PORT="${PORT:-18503}"
 VOL="${VOL:-foundry-data}"
+WIKI_PORT="${WIKI_PORT:-18504}"   # the wiki container the Hub starts from the console
+SOCK="${SOCK:-/var/run/docker.sock}"
 
 RESET=0
 for a in "$@"; do
@@ -33,12 +35,19 @@ if [ "$RESET" = 1 ]; then
   docker run --rm -v "$VOL:/data" --entrypoint sh "$IMAGE" -c 'rm -f /data/users.json /data/jwt.key'
 fi
 
+# Mount the docker socket so the Hub can start/stop the wiki container (forge-kb
+# local mode) from the console. Skip with NO_DOCKER=1 (wiki control disabled).
+DOCKER_MOUNT=""
+if [ -z "${NO_DOCKER:-}" ] && [ -S "$SOCK" ]; then
+  DOCKER_MOUNT="-v $SOCK:/var/run/docker.sock -e FOUNDRY_WIKI_PORT=$WIKI_PORT"
+fi
+
 docker run -d --name "$NAME" --restart unless-stopped \
-  -p "$PORT:$PORT" -v "$VOL:/data" \
+  -p "$PORT:$PORT" -v "$VOL:/data" $DOCKER_MOUNT \
   ${FOUNDRY_ADMIN_USERNAME:+-e FOUNDRY_ADMIN_USERNAME="$FOUNDRY_ADMIN_USERNAME"} \
   ${FOUNDRY_ADMIN_PASSWORD:+-e FOUNDRY_ADMIN_PASSWORD="$FOUNDRY_ADMIN_PASSWORD"} \
   "$IMAGE"
 
-echo "✓ → http://localhost:$PORT/"
+echo "✓ → http://localhost:$PORT/   (console → Wiki → Start launches the wiki on :$WIKI_PORT)"
 [ "$RESET" = 1 ] && echo "  login: admin / admin  (forced password change on first login)"
 exit 0
