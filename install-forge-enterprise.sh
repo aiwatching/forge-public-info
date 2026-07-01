@@ -66,6 +66,13 @@ prompt() { # prompt VAR "label" [silent]
   printf -v "$__var" '%s' "$__val"
 }
 
+optprompt() { # optprompt VAR "label" [silent] : blank allowed (no re-ask)
+  local __var="$1" __label="$2" __silent="${3:-}" __val=""
+  if [ -n "$__silent" ]; then printf '%s: ' "$__label" >&2; read -r -s __val < /dev/tty; printf '\n' >&2
+  else printf '%s: ' "$__label" >&2; read -r __val < /dev/tty; fi
+  printf -v "$__var" '%s' "$__val"
+}
+
 USERNAME=""; EMAIL=""; GITLAB_PAT=""; GITLAB_NAME=""
 prompt USERNAME "Username"
 while :; do
@@ -75,12 +82,13 @@ while :; do
     *) c_ylw "  Not a fortinet.com address, try again." ;;
   esac
 done
-prompt GITLAB_NAME "GitLab name"
-prompt GITLAB_PAT  "GitLab PAT" silent
+# gitlab: blank on a re-enroll reuses what Foundry already stored for this user.
+optprompt GITLAB_NAME "GitLab name (blank = reuse Foundry's saved value)"
+optprompt GITLAB_PAT  "GitLab PAT (blank = reuse)" silent
 
 # --- review before submitting (catch a mis-typed field) ---------------------
 c_green ""
-c_green "Enroll as:  username=$USERNAME  email=$EMAIL  gitlab-name=$GITLAB_NAME"
+c_green "Enroll as:  username=$USERNAME  email=$EMAIL  gitlab-name=${GITLAB_NAME:-<reuse saved>}"
 printf 'Continue? [y/N] ' >&2
 read -r _confirm < /dev/tty
 case "$_confirm" in [yY]*) ;; *) die "aborted - re-run to re-enter" ;; esac
@@ -125,6 +133,10 @@ ENTERPRISE_AGENT_KEY=$(json_get "$RESP" enterprise_agent_key)
 TEMPER_URL=$(json_get "$RESP" temper_url)
 TEMPER_KEY=$(json_get "$RESP" temper_key)
 GITLAB_BASE_URL=$(json_get "$RESP" gitlab_base_url)
+# Effective gitlab creds from the Hub (what we sent, or the stored value it
+# reused when we left them blank on a re-enroll) - use these downstream.
+GITLAB_PAT=$(json_get "$RESP" gitlab_pat)
+GITLAB_NAME=$(json_get "$RESP" gitlab_name)
 
 # --- write forge enterprise config ------------------------------------------
 FORGE_DIR="$HOME/.forge"
