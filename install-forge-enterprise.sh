@@ -113,6 +113,8 @@ APIKEY=$(json_get "$RESP" apikey)
 [ -n "$APIKEY" ] || die "enroll succeeded but no api key in response: $RESP"
 # enterprise_config is a multi-line config.env blob, JSON-escaped (\n, \"); decode it.
 ENTERPRISE_CONFIG=$(json_get "$RESP" enterprise_config | awk '{ gsub(/\\n/,"\n"); gsub(/\\"/,"\""); print }')
+# enterprise_agent_key = forge's own enterprise key (<pat>@github.com/owner/repo)
+ENTERPRISE_AGENT_KEY=$(json_get "$RESP" enterprise_agent_key)
 
 # --- write forge enterprise config ------------------------------------------
 FORGE_DIR="$HOME/.forge"
@@ -142,6 +144,17 @@ if [ -n "$ENTERPRISE_CONFIG" ]; then
   c_green "  + wrote $FORGE_DIR/enterprise/config.env (init config from the Hub)"
 else
   c_ylw "  ! Hub returned no enterprise config (admin: Foundry -> Settings -> Enterprise init config)"
+fi
+
+# Provision forge's own enterprise agent key into its native store so the
+# enterprise wizard is already satisfied (forge reads <dataDir>/.enterprise-keys.json).
+if [ -n "$ENTERPRISE_AGENT_KEY" ]; then
+  mkdir -p "$FORGE_DIR/data"
+  printf '{\n  "v": 1,\n  "keys": ["%s"]\n}\n' "$(json_escape "$ENTERPRISE_AGENT_KEY")" > "$FORGE_DIR/data/.enterprise-keys.json"
+  chmod 600 "$FORGE_DIR/data/.enterprise-keys.json"
+  c_green "  + wrote $FORGE_DIR/data/.enterprise-keys.json (forge enterprise agent key)"
+else
+  c_ylw "  ! Hub returned no enterprise agent key (admin: Foundry -> Settings -> Keys -> forge_enterprise_key)"
 fi
 
 # --- install the forge CLI ---------------------------------------------------
