@@ -177,6 +177,7 @@ if [ "$has_onboard" = 1 ] && [ -n "$ENTERPRISE_AGENT_KEY" ]; then
   set -- onboard --non-interactive --name "$USERNAME" --email "$EMAIL" \
     --enterprise-key "$ENTERPRISE_AGENT_KEY" --yes
   [ -n "$GITLAB_PAT" ] && set -- "$@" --gitlab-token "$GITLAB_PAT"
+  [ -n "$GITLAB_NAME" ] && set -- "$@" --gitlab-name "$GITLAB_NAME"
   [ -n "$GITLAB_BASE_URL" ] && set -- "$@" --gitlab-base-url "$GITLAB_BASE_URL"
   [ -n "$TEMPER_URL" ] && set -- "$@" --temper-url "$TEMPER_URL"
   [ -n "$TEMPER_KEY" ] && set -- "$@" --temper-key "$TEMPER_KEY"
