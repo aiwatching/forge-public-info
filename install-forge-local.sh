@@ -99,8 +99,13 @@ ensure_with_prompt() {
     return 0
   fi
   if confirm "Install $display ($PM install $pkg)?"; then
-    pkg_install "$pkg"
-    c_green "  ✓ $display installed"
+    # Non-fatal: a failed optional install must not abort the whole script
+    # (set -e) before Forge itself gets installed.
+    if pkg_install "$pkg"; then
+      c_green "  ✓ $display installed"
+    else
+      c_yellow "  ⚠ $display install failed — skipping (optional; install it manually later)"
+    fi
   else
     c_yellow "  ⚠ Skipped $display — some Forge features won't work"
   fi
@@ -132,13 +137,16 @@ ensure_with_prompt tmux tmux "brew:tmux,apt:tmux,dnf:tmux,pacman:tmux,zypper:tmu
 # git
 ensure_with_prompt git git "brew:git,apt:git,dnf:git,pacman:git,zypper:git"
 
-# pnpm (via npm, not OS pkg)
-if have pnpm; then
+# pnpm (via npm, not OS pkg). pnpm 10 needs Node >= 22.13; pin to 9 so it works
+# on Node 20-22.x too.
+if have pnpm && pnpm -v >/dev/null 2>&1; then
   c_green "  ✓ pnpm $(pnpm -v)"
+elif have pnpm; then
+  c_yellow "  ⚠ pnpm is installed but won't run — usually Node is too old (pnpm 10 needs Node >= 22.13)."
+  c_yellow "     Fix with:  nvm install 22   (upgrade Node)   or   npm install -g pnpm@9"
 else
   if confirm "Install pnpm via npm?"; then
-    npm install -g pnpm
-    c_green "  ✓ pnpm installed"
+    npm install -g pnpm@9 && c_green "  ✓ pnpm installed" || c_yellow "  ⚠ pnpm install failed — Forge build may fail"
   else
     c_yellow "  ⚠ pnpm skipped — Forge build may fail"
   fi
@@ -165,7 +173,9 @@ if [ "$SKIP_OPTIONAL" = 0 ]; then
   echo ""
   log "Checking optional dependencies (used by some pipelines)…"
   ensure_with_prompt jq   jq   "brew:jq,apt:jq,dnf:jq,pacman:jq,zypper:jq"
-  ensure_with_prompt glab glab "brew:glab,apt:glab,dnf:glab,pacman:glab,zypper:glab"
+  # glab is not in Debian/Ubuntu's default apt repos — omit apt so we print
+  # "install manually" instead of a failing apt-get.
+  ensure_with_prompt glab glab "brew:glab,dnf:glab,pacman:glab,zypper:glab"
   ensure_with_prompt gh   "GitHub CLI" "brew:gh,apt:gh,dnf:gh,pacman:github-cli,zypper:gh"
 fi
 
