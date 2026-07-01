@@ -8,11 +8,11 @@
 # Finally installs/upgrades @aion0/forge globally and starts the server.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-deps.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-local.sh | bash
 #   # or
-#   bash scripts/install-deps.sh             # interactive (prompts before brew/apt)
-#   bash scripts/install-deps.sh --yes       # non-interactive
-#   bash scripts/install-deps.sh --skip-optional
+#   bash scripts/install-forge-local.sh             # interactive (prompts before brew/apt)
+#   bash scripts/install-forge-local.sh --yes       # non-interactive
+#   bash scripts/install-forge-local.sh --skip-optional
 #
 
 set -euo pipefail

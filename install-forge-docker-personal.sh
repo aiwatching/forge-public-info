@@ -2,15 +2,15 @@
 #
 # Forge Personal - one-command installer.
 #
-# Lives at: https://github.com/aiwatching/forge-public-info/blob/main/install-personal.sh
+# Lives at: https://github.com/aiwatching/forge-public-info/blob/main/install-forge-docker-personal.sh
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-personal.sh | bash -s -- <PAT>
+#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-docker-personal.sh | bash -s -- <PAT>
 #
 # Or download + run:
-#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-personal.sh -o install-personal.sh
-#   chmod +x install-personal.sh
-#   ./install-personal.sh <PAT>
+#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-docker-personal.sh -o install-forge-docker-personal.sh
+#   chmod +x install-forge-docker-personal.sh
+#   ./install-forge-docker-personal.sh <PAT>
 #
 # Re-running is safe and idempotent - it upgrades the image and recreates
 # the container while preserving every workspace under $WORKSPACE_DIR
@@ -62,7 +62,7 @@ fail()   { printf '\n%s %s\n' "$(c_red 'x')" "$*" >&2; exit 1; }
 
 # --- 1. Args ---
 # Positional PAT plus a couple of flags that flip tinyproxy behavior.
-# Order doesn't matter: install-personal.sh ghp_xxx --no-tinyproxy
+# Order doesn't matter: install-forge-docker-personal.sh ghp_xxx --no-tinyproxy
 # works the same as --no-tinyproxy ghp_xxx.
 PAT=""
 for arg in "$@"; do
@@ -71,7 +71,7 @@ for arg in "$@"; do
     --with-tinyproxy) TINYPROXY_MODE=yes ;;
     -h|--help)
       cat <<HELP
-Usage: install-personal.sh <PAT> [flags]
+Usage: install-forge-docker-personal.sh <PAT> [flags]
 
 Flags:
   --no-tinyproxy     Don't install/configure host tinyproxy. Use when
@@ -182,7 +182,7 @@ mkdir -p "$WORKSPACE_DIR"
 # it automatically.
 #
 # Honor an existing NEKO_NAT_IP in env (operator override) or in the
-# already-present .env (re-runs of install-personal.sh should NOT
+# already-present .env (re-runs of install-forge-docker-personal.sh should NOT
 # clobber a manually-tuned value).
 ENV_FILE="$WORKSPACE_DIR/.env"
 existing_nat=""

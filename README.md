@@ -5,7 +5,7 @@ Public assets for [@aion0/forge](https://www.npmjs.com/package/@aion0/forge) —
 ## One-line install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-deps.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-local.sh | bash
 ```
 
 This detects your OS, installs missing system dependencies (`tmux`, `git`, `claude` CLI, optional `jq`/`glab`/`gh`) via Homebrew or apt/dnf/pacman/zypper, then runs `npm install -g @aion0/forge`.
@@ -13,13 +13,13 @@ This detects your OS, installs missing system dependencies (`tmux`, `git`, `clau
 Non-interactive variant:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-deps.sh | bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-local.sh | bash -s -- --yes
 ```
 
 Skip optional CLIs:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-deps.sh | bash -s -- --skip-optional
+curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-local.sh | bash -s -- --skip-optional
 ```
 
 ## After install

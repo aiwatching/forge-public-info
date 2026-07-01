@@ -28,7 +28,7 @@
 #
 # Re-running is safe and idempotent.
 #
-# ASCII-only by convention (see install-personal.sh for why).
+# ASCII-only by convention (see install-forge-docker-personal.sh for why).
 
 set -euo pipefail
 

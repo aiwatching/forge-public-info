@@ -8,13 +8,13 @@
 #   - the data directory $WORKSPACE_DIR (default: ~/forge-personal),
 #     including root-owned files written by the workspace containers
 #
-# Re-installing afterwards: just run install-personal.sh again.
+# Re-installing afterwards: just run install-forge-docker-personal.sh again.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/uninstall-personal.sh | bash
-#   curl -fsSL ...uninstall-personal.sh | bash -s -- --yes        # skip the prompt
+#   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/uninstall-forge-docker-personal.sh | bash
+#   curl -fsSL ...uninstall-forge-docker-personal.sh | bash -s -- --yes        # skip the prompt
 #
-# This file is ASCII-only on purpose (see install-personal.sh header).
+# This file is ASCII-only on purpose (see install-forge-docker-personal.sh header).
 
 set -euo pipefail
 
@@ -178,5 +178,5 @@ $(c_grn 'OK') Forge Personal uninstalled.
   $(c_dim 'GHCR login is left in place')   ($HOME/.docker/config.json)
   $(c_dim 'Run \`docker logout ghcr.io\` if you want to drop the credentials too.')
 
-  Re-install anytime by running install-personal.sh again.
+  Re-install anytime by running install-forge-docker-personal.sh again.
 EOF
