@@ -78,6 +78,13 @@ done
 prompt GITLAB_NAME "GitLab name"
 prompt GITLAB_PAT  "GitLab PAT" silent
 
+# --- review before submitting (catch a mis-typed field) ---------------------
+c_green ""
+c_green "Enroll as:  username=$USERNAME  email=$EMAIL  gitlab-name=$GITLAB_NAME"
+printf 'Continue? [y/N] ' >&2
+read -r _confirm < /dev/tty
+case "$_confirm" in [yY]*) ;; *) die "aborted - re-run to re-enter" ;; esac
+
 # --- JSON helpers (no jq/python dependency) ---------------------------------
 json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 json_get() { # json_get '<json>' <key>  -> first string value
