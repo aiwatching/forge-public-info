@@ -2,9 +2,9 @@
 #
 # Forge Enterprise - one-command onboarding against a Foundry Hub.
 #
-# Instead of pasting a fortinet key by hand, a fresh forge enrolls with the
+# Instead of pasting an enterprise key by hand, a fresh forge enrolls with the
 # Foundry Hub: you provide your identity + gitlab creds once, the Hub hands back
-# an API key and the fortinet key, and forge is configured to talk to the Hub.
+# an API key and the enterprise init config, and forge is configured against it.
 #
 # Usage (the Foundry console generates this line for you, with the token filled in):
 #   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-enterprise.sh | bash -s -- --token <ENROLL_TOKEN>
@@ -110,8 +110,9 @@ if [ "$CODE" != "200" ]; then
 fi
 
 APIKEY=$(json_get "$RESP" apikey)
-FORTINET_KEY=$(json_get "$RESP" fortinet_key)
 [ -n "$APIKEY" ] || die "enroll succeeded but no api key in response: $RESP"
+# enterprise_config is a multi-line config.env blob, JSON-escaped (\n, \"); decode it.
+ENTERPRISE_CONFIG=$(json_get "$RESP" enterprise_config | awk '{ gsub(/\\n/,"\n"); gsub(/\\"/,"\""); print }')
 
 # --- write forge enterprise config ------------------------------------------
 FORGE_DIR="$HOME/.forge"
@@ -124,14 +125,24 @@ cat > "$CFG" <<EOF
   "username": "$(json_escape "$USERNAME")",
   "email": "$(json_escape "$EMAIL")",
   "apikey": "$(json_escape "$APIKEY")",
-  "fortinet_key": "$(json_escape "$FORTINET_KEY")",
   "gitlab_name": "$(json_escape "$GITLAB_NAME")",
   "gitlab_pat": "$(json_escape "$GITLAB_PAT")"
 }
 EOF
 chmod 600 "$CFG"
 c_green "  + enrolled as $USERNAME ($EMAIL)"
-c_green "  + wrote $CFG (api key + fortinet key)"
+c_green "  + wrote $CFG (foundry url + api key)"
+
+# Provision the enterprise init config.env where the prelude skill's sync.sh
+# reads it (its fallback location) -- no manual key paste.
+if [ -n "$ENTERPRISE_CONFIG" ]; then
+  mkdir -p "$FORGE_DIR/enterprise"
+  printf '%s\n' "$ENTERPRISE_CONFIG" > "$FORGE_DIR/enterprise/config.env"
+  chmod 600 "$FORGE_DIR/enterprise/config.env"
+  c_green "  + wrote $FORGE_DIR/enterprise/config.env (init config from the Hub)"
+else
+  c_ylw "  ! Hub returned no enterprise config (admin: Foundry -> Settings -> Enterprise init config)"
+fi
 
 # --- install the forge CLI ---------------------------------------------------
 if [ "$INSTALL_DEPS" = 1 ]; then
