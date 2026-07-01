@@ -26,6 +26,7 @@ set -euo pipefail
 
 FOUNDRY_URL="http://10.15.33.50:18503"
 ENROLL_TOKEN=""
+USER_KEY=""
 INSTALL_DEPS=1
 LOCAL_INSTALLER="https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-local.sh"
 
@@ -36,9 +37,10 @@ die()     { c_red "  x $*" >&2; exit 1; }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --token)   ENROLL_TOKEN="${2:-}"; shift 2 ;;
-    --foundry) FOUNDRY_URL="${2:-}"; shift 2 ;;
-    --no-deps) INSTALL_DEPS=0; shift ;;
+    --token)    ENROLL_TOKEN="${2:-}"; shift 2 ;;
+    --user-key) USER_KEY="${2:-}"; shift 2 ;;
+    --foundry)  FOUNDRY_URL="${2:-}"; shift 2 ;;
+    --no-deps)  INSTALL_DEPS=0; shift ;;
     -h|--help) sed -n '2,27p' "$0" 2>/dev/null || grep '^#' "$0" | head -27; exit 0 ;;
     *) die "Unknown flag: $1  (see --help)" ;;
   esac
@@ -46,7 +48,7 @@ done
 
 # strip trailing slash
 FOUNDRY_URL="${FOUNDRY_URL%/}"
-[ -n "$ENROLL_TOKEN" ] || die "Missing --token. Copy the full install command from the Foundry console (Enroll a forge)."
+[ -n "$ENROLL_TOKEN" ] || [ -n "$USER_KEY" ] || die "Missing --token (first enroll) or --user-key (redeploy). Copy a command from the Foundry console."
 
 command -v curl >/dev/null 2>&1 || die "curl is required."
 
@@ -73,68 +75,84 @@ optprompt() { # optprompt VAR "label" [silent] : blank allowed (no re-ask)
   printf -v "$__var" '%s' "$__val"
 }
 
-USERNAME=""; EMAIL=""; GITLAB_PAT=""; GITLAB_NAME=""
-prompt USERNAME "Username"
-while :; do
-  prompt EMAIL "Email (must be a fortinet.com address)"
-  case "$EMAIL" in
-    *@fortinet.com|*@*.fortinet.com) break ;;
-    *) c_ylw "  Not a fortinet.com address, try again." ;;
-  esac
-done
-# gitlab: blank on a re-enroll reuses what Foundry already stored for this user.
-optprompt GITLAB_NAME "GitLab name (blank = reuse Foundry's saved value)"
-optprompt GITLAB_PAT  "GitLab PAT (blank = reuse)" silent
-
-# --- review before submitting (catch a mis-typed field) ---------------------
-c_green ""
-c_green "Enroll as:  username=$USERNAME  email=$EMAIL  gitlab-name=${GITLAB_NAME:-<reuse saved>}"
-printf 'Continue? [y/N] ' >&2
-read -r _confirm < /dev/tty
-case "$_confirm" in [yY]*) ;; *) die "aborted - re-run to re-enter" ;; esac
-
 # --- JSON helpers (no jq/python dependency) ---------------------------------
 json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 json_get() { # json_get '<json>' <key>  -> first string value
   printf '%s' "$1" | grep -oE "\"$2\":\"[^\"]*\"" | head -1 | sed -E "s/\"$2\":\"(.*)\"/\1/"
 }
 
-BODY=$(printf '{"username":"%s","email":"%s","gitlab_pat":"%s","gitlab_name":"%s"}' \
-  "$(json_escape "$USERNAME")" "$(json_escape "$EMAIL")" \
-  "$(json_escape "$GITLAB_PAT")" "$(json_escape "$GITLAB_NAME")")
+if [ -n "$USER_KEY" ]; then
+  # Zero-prompt redeploy: pull this identity's whole config by its own API key.
+  c_green ""
+  c_green "Fetching config from the Foundry Hub (user key)..."
+  HTTP_BODY=$(mktemp)
+  CODE=$(curl -sS -o "$HTTP_BODY" -w '%{http_code}' \
+    "$FOUNDRY_URL/enroll/config" -H "X-API-Key: $USER_KEY" || echo "000")
+  RESP=$(cat "$HTTP_BODY"); rm -f "$HTTP_BODY"
+  if [ "$CODE" != "200" ]; then
+    c_red "  x config fetch failed (HTTP $CODE): $RESP"
+    [ "$CODE" = "401" ] && c_ylw "     -> bad user key. Get a fresh one in Foundry (Forges -> Issue deploy key)."
+    [ "$CODE" = "000" ] && c_ylw "     -> could not reach $FOUNDRY_URL. On the internal network?"
+    exit 1
+  fi
+  APIKEY="$USER_KEY"
+else
+  # First enroll: identity + gitlab, gated by the shared enroll token.
+  USERNAME=""; EMAIL=""; GITLAB_PAT=""; GITLAB_NAME=""
+  prompt USERNAME "Username"
+  while :; do
+    prompt EMAIL "Email (must be a fortinet.com address)"
+    case "$EMAIL" in
+      *@fortinet.com|*@*.fortinet.com) break ;;
+      *) c_ylw "  Not a fortinet.com address, try again." ;;
+    esac
+  done
+  # gitlab: blank on a re-enroll reuses what Foundry already stored for this user.
+  optprompt GITLAB_NAME "GitLab name (blank = reuse Foundry's saved value)"
+  optprompt GITLAB_PAT  "GitLab PAT (blank = reuse)" silent
 
-c_green ""
-c_green "Enrolling with the Foundry Hub..."
-HTTP_BODY=$(mktemp)
-CODE=$(curl -sS -o "$HTTP_BODY" -w '%{http_code}' \
-  -X POST "$FOUNDRY_URL/enroll/register" \
-  -H "X-Enroll-Token: $ENROLL_TOKEN" \
-  -H 'Content-Type: application/json' \
-  --data "$BODY" || echo "000")
-RESP=$(cat "$HTTP_BODY"); rm -f "$HTTP_BODY"
+  c_green ""
+  c_green "Enroll as:  username=$USERNAME  email=$EMAIL  gitlab-name=${GITLAB_NAME:-<reuse saved>}"
+  printf 'Continue? [y/N] ' >&2
+  read -r _confirm < /dev/tty
+  case "$_confirm" in [yY]*) ;; *) die "aborted - re-run to re-enter" ;; esac
 
-if [ "$CODE" != "200" ]; then
-  c_red "  x enroll failed (HTTP $CODE): $RESP"
-  case "$CODE" in
-    401) c_ylw "     -> bad/expired token. Re-copy the command from the Foundry console." ;;
-    400) c_ylw "     -> check the email is a fortinet.com address." ;;
-    503) c_ylw "     -> the Hub has no enroll token set (admin: Wallet -> enroll_token)." ;;
-    000) c_ylw "     -> could not reach $FOUNDRY_URL. On the internal network?" ;;
-  esac
-  exit 1
+  BODY=$(printf '{"username":"%s","email":"%s","gitlab_pat":"%s","gitlab_name":"%s"}' \
+    "$(json_escape "$USERNAME")" "$(json_escape "$EMAIL")" \
+    "$(json_escape "$GITLAB_PAT")" "$(json_escape "$GITLAB_NAME")")
+
+  c_green ""
+  c_green "Enrolling with the Foundry Hub..."
+  HTTP_BODY=$(mktemp)
+  CODE=$(curl -sS -o "$HTTP_BODY" -w '%{http_code}' \
+    -X POST "$FOUNDRY_URL/enroll/register" \
+    -H "X-Enroll-Token: $ENROLL_TOKEN" \
+    -H 'Content-Type: application/json' \
+    --data "$BODY" || echo "000")
+  RESP=$(cat "$HTTP_BODY"); rm -f "$HTTP_BODY"
+  if [ "$CODE" != "200" ]; then
+    c_red "  x enroll failed (HTTP $CODE): $RESP"
+    case "$CODE" in
+      401) c_ylw "     -> bad/expired token. Re-copy the command from the Foundry console." ;;
+      400) c_ylw "     -> check the email is a fortinet.com address." ;;
+      503) c_ylw "     -> the Hub has no enroll token set (admin: Settings -> Keys -> enroll_token)." ;;
+      000) c_ylw "     -> could not reach $FOUNDRY_URL. On the internal network?" ;;
+    esac
+    exit 1
+  fi
+  APIKEY=$(json_get "$RESP" apikey)
+  [ -n "$APIKEY" ] || die "enroll succeeded but no api key in response: $RESP"
 fi
 
-APIKEY=$(json_get "$RESP" apikey)
-[ -n "$APIKEY" ] || die "enroll succeeded but no api key in response: $RESP"
+# --- parse the config bundle (same shape for both paths) --------------------
+USERNAME=$(json_get "$RESP" username)
+EMAIL=$(json_get "$RESP" email)
 # enterprise_config is a multi-line config.env blob, JSON-escaped (\n, \"); decode it.
 ENTERPRISE_CONFIG=$(json_get "$RESP" enterprise_config | awk '{ gsub(/\\n/,"\n"); gsub(/\\"/,"\""); print }')
-# enterprise_agent_key = forge's own enterprise key (<pat>@github.com/owner/repo)
 ENTERPRISE_AGENT_KEY=$(json_get "$RESP" enterprise_agent_key)
 TEMPER_URL=$(json_get "$RESP" temper_url)
 TEMPER_KEY=$(json_get "$RESP" temper_key)
 GITLAB_BASE_URL=$(json_get "$RESP" gitlab_base_url)
-# Effective gitlab creds from the Hub (what we sent, or the stored value it
-# reused when we left them blank on a re-enroll) - use these downstream.
 GITLAB_PAT=$(json_get "$RESP" gitlab_pat)
 GITLAB_NAME=$(json_get "$RESP" gitlab_name)
 
