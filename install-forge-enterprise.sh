@@ -148,44 +148,66 @@ else
   c_ylw "  ! Hub returned no enterprise config (admin: Foundry -> Settings -> Enterprise init config)"
 fi
 
-# Provision forge's own enterprise agent key into its native store so the
-# enterprise wizard is already satisfied (forge reads <dataDir>/.enterprise-keys.json).
-if [ -n "$ENTERPRISE_AGENT_KEY" ]; then
-  mkdir -p "$FORGE_DIR/data"
-  printf '{\n  "v": 1,\n  "keys": ["%s"]\n}\n' "$(json_escape "$ENTERPRISE_AGENT_KEY")" > "$FORGE_DIR/data/.enterprise-keys.json"
-  chmod 600 "$FORGE_DIR/data/.enterprise-keys.json"
-  c_green "  + wrote $FORGE_DIR/data/.enterprise-keys.json (forge enterprise agent key)"
-else
-  c_ylw "  ! Hub returned no enterprise agent key (admin: Foundry -> Settings -> Keys -> forge_enterprise_key)"
-fi
-
-# Pre-fill forge's settings so its wizard is skipped: identity + temper memory.
-# forge merges this partial file with its defaults on load, and tolerates a
-# plaintext secret (temperKey) -- it re-encrypts on the next save. Only write
-# if there's no settings.yaml yet, so we never clobber an existing config.
-SETTINGS="$FORGE_DIR/data/settings.yaml"
-if [ -f "$SETTINGS" ]; then
-  c_ylw "  ! $SETTINGS exists - leaving it (set identity/temper in forge Settings)"
-else
-  mkdir -p "$FORGE_DIR/data"
-  MEM_BACKEND="auto"; [ -n "$TEMPER_KEY" ] && MEM_BACKEND="temper"
-  {
-    printf 'displayName: "%s"\n'  "$(json_escape "$USERNAME")"
-    printf 'displayEmail: "%s"\n' "$(json_escape "$EMAIL")"
-    printf 'temperUrl: "%s"\n'    "$(json_escape "$TEMPER_URL")"
-    printf 'temperKey: "%s"\n'    "$(json_escape "$TEMPER_KEY")"
-    printf 'memoryBackend: "%s"\n' "$MEM_BACKEND"
-    printf 'onboardingCompleted: true\n'
-  } > "$SETTINGS"
-  chmod 600 "$SETTINGS"
-  c_green "  + wrote $SETTINGS (identity + temper + wizard skipped)"
-fi
-
-# --- install the forge CLI ---------------------------------------------------
+# --- install the forge CLI (must be before `forge onboard`) ------------------
 if [ "$INSTALL_DEPS" = 1 ]; then
   c_green ""
   c_green "Installing the forge CLI..."
   curl -fsSL "$LOCAL_INSTALLER" | bash -s -- --yes
+fi
+
+# --- configure forge ---------------------------------------------------------
+# Prefer `forge onboard` (>= 0.12.0): it runs the real wizard logic - enterprise
+# key + connector sync + apply company/dept/connector template + identity +
+# temper + gitlab + onboardingCompleted. Older forge has no such command, so
+# fall back to writing forge's native files directly.
+FORGE_BIN="$(command -v forge || true)"
+[ -z "$FORGE_BIN" ] && [ -x "$(npm bin -g 2>/dev/null)/forge" ] && FORGE_BIN="$(npm bin -g 2>/dev/null)/forge"
+FVER="$("$FORGE_BIN" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+ONBOARD_MIN="0.12.0"
+has_onboard=0
+if [ -n "$FORGE_BIN" ] && [ -n "$FVER" ] && \
+   [ "$(printf '%s\n%s\n' "$ONBOARD_MIN" "$FVER" | sort -V | head -1)" = "$ONBOARD_MIN" ]; then
+  has_onboard=1
+fi
+
+if [ "$has_onboard" = 1 ] && [ -n "$ENTERPRISE_AGENT_KEY" ]; then
+  c_green ""
+  c_green "Configuring forge (forge onboard)..."
+  set -- onboard --non-interactive --name "$USERNAME" --email "$EMAIL" \
+    --enterprise-key "$ENTERPRISE_AGENT_KEY" --yes
+  [ -n "$GITLAB_PAT" ] && set -- "$@" --gitlab-token "$GITLAB_PAT"
+  [ -n "$TEMPER_URL" ] && set -- "$@" --temper-url "$TEMPER_URL"
+  [ -n "$TEMPER_KEY" ] && set -- "$@" --temper-key "$TEMPER_KEY"
+  if "$FORGE_BIN" "$@"; then
+    c_green "  + forge onboarded (identity + enterprise template + temper + gitlab)"
+  else
+    c_red "  x forge onboard failed (exit $?) - finish in forge Settings"
+  fi
+else
+  # Fallback: forge < 0.12.0 (no onboard). Write native files; merge into
+  # settings.yaml (never clobber existing fields). No company/dept/connectors.
+  [ "$has_onboard" = 0 ] && c_ylw "  ! forge ${FVER:-?} has no 'onboard' (need >= $ONBOARD_MIN) - writing config directly"
+  mkdir -p "$FORGE_DIR/data"
+  if [ -n "$ENTERPRISE_AGENT_KEY" ]; then
+    printf '{\n  "v": 1,\n  "keys": ["%s"]\n}\n' "$(json_escape "$ENTERPRISE_AGENT_KEY")" > "$FORGE_DIR/data/.enterprise-keys.json"
+    chmod 600 "$FORGE_DIR/data/.enterprise-keys.json"
+    c_green "  + wrote .enterprise-keys.json"
+  fi
+  SETTINGS="$FORGE_DIR/data/settings.yaml"; touch "$SETTINGS"
+  MEM_BACKEND="auto"; [ -n "$TEMPER_KEY" ] && MEM_BACKEND="temper"
+  set_yaml() { # set_yaml <key> <value> : replace the top-level line or append
+    awk -v k="$1" -v line="$1: $2" \
+      '$0 ~ "^" k ":" { print line; found=1; next } { print } END { if(!found) print line }' \
+      "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
+  }
+  set_yaml displayName "\"$(json_escape "$USERNAME")\""
+  set_yaml displayEmail "\"$(json_escape "$EMAIL")\""
+  set_yaml temperUrl "\"$(json_escape "$TEMPER_URL")\""
+  set_yaml temperKey "\"$(json_escape "$TEMPER_KEY")\""
+  set_yaml memoryBackend "\"$MEM_BACKEND\""
+  set_yaml onboardingCompleted "true"
+  chmod 600 "$SETTINGS"
+  c_green "  + merged identity + temper into settings.yaml (wizard skipped)"
 fi
 
 c_green ""
