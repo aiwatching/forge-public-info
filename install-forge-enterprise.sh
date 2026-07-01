@@ -156,14 +156,14 @@ if [ "$INSTALL_DEPS" = 1 ]; then
 fi
 
 # --- configure forge ---------------------------------------------------------
-# Prefer `forge onboard` (>= 0.12.0): it runs the real wizard logic - enterprise
+# Prefer `forge onboard` (>= 0.11.20): it runs the real wizard logic - enterprise
 # key + connector sync + apply company/dept/connector template + identity +
 # temper + gitlab + onboardingCompleted. Older forge has no such command, so
 # fall back to writing forge's native files directly.
 FORGE_BIN="$(command -v forge || true)"
 [ -z "$FORGE_BIN" ] && [ -x "$(npm bin -g 2>/dev/null)/forge" ] && FORGE_BIN="$(npm bin -g 2>/dev/null)/forge"
 FVER="$("$FORGE_BIN" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-ONBOARD_MIN="0.12.0"
+ONBOARD_MIN="0.11.20"
 has_onboard=0
 if [ -n "$FORGE_BIN" ] && [ -n "$FVER" ] && \
    [ "$(printf '%s\n%s\n' "$ONBOARD_MIN" "$FVER" | sort -V | head -1)" = "$ONBOARD_MIN" ]; then
