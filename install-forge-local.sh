@@ -114,20 +114,24 @@ ensure_with_prompt() {
 # ─── 1. Required ──────────────────────────────────────────────────────
 log "Checking required dependencies…"
 
-# Node 20+
+# Node 22.13+ (forge's undici uses markAsUncloneable, added in Node ~22.10;
+# pnpm 10 also needs >= 22.13). Older Node installs but crashes at runtime.
+NODE_MIN="22.13.0"
 if have node; then
-  NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-  if [ "$NODE_MAJOR" -ge 20 ]; then
-    c_green "  ✓ node $(node -v) (≥ 20)"
+  NODE_VER="$(node -p 'process.versions.node')"
+  if [ "$(printf '%s\n%s\n' "$NODE_MIN" "$NODE_VER" | sort -V | head -1)" = "$NODE_MIN" ]; then
+    c_green "  ✓ node $(node -v) (≥ $NODE_MIN)"
   else
-    c_red "  ✗ node $(node -v) — Forge needs ≥ 20. Install nvm or upgrade your Node."
+    c_red "  ✗ node $(node -v) — Forge needs ≥ $NODE_MIN (older crashes with 'markAsUncloneable is not a function')."
+    echo "      nvm install 22 && nvm alias default 22 && nvm use 22"
+    echo "      then re-run this installer so forge installs under the new Node."
     exit 1
   fi
 else
-  c_red "  ✗ node not installed. Install Node 20+ first:"
+  c_red "  ✗ node not installed. Install Node 22 first:"
   echo "      macOS:  brew install node          (or use nvm)"
   echo "      Linux:  use nvm — https://github.com/nvm-sh/nvm"
-  echo "              then:  nvm install 20"
+  echo "              then:  nvm install 22"
   exit 1
 fi
 
