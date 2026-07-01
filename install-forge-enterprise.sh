@@ -117,6 +117,7 @@ ENTERPRISE_CONFIG=$(json_get "$RESP" enterprise_config | awk '{ gsub(/\\n/,"\n")
 ENTERPRISE_AGENT_KEY=$(json_get "$RESP" enterprise_agent_key)
 TEMPER_URL=$(json_get "$RESP" temper_url)
 TEMPER_KEY=$(json_get "$RESP" temper_key)
+GITLAB_BASE_URL=$(json_get "$RESP" gitlab_base_url)
 
 # --- write forge enterprise config ------------------------------------------
 FORGE_DIR="$HOME/.forge"
@@ -176,6 +177,7 @@ if [ "$has_onboard" = 1 ] && [ -n "$ENTERPRISE_AGENT_KEY" ]; then
   set -- onboard --non-interactive --name "$USERNAME" --email "$EMAIL" \
     --enterprise-key "$ENTERPRISE_AGENT_KEY" --yes
   [ -n "$GITLAB_PAT" ] && set -- "$@" --gitlab-token "$GITLAB_PAT"
+  [ -n "$GITLAB_BASE_URL" ] && set -- "$@" --gitlab-base-url "$GITLAB_BASE_URL"
   [ -n "$TEMPER_URL" ] && set -- "$@" --temper-url "$TEMPER_URL"
   [ -n "$TEMPER_KEY" ] && set -- "$@" --temper-key "$TEMPER_KEY"
   if "$FORGE_BIN" "$@"; then
