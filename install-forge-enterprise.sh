@@ -115,6 +115,8 @@ APIKEY=$(json_get "$RESP" apikey)
 ENTERPRISE_CONFIG=$(json_get "$RESP" enterprise_config | awk '{ gsub(/\\n/,"\n"); gsub(/\\"/,"\""); print }')
 # enterprise_agent_key = forge's own enterprise key (<pat>@github.com/owner/repo)
 ENTERPRISE_AGENT_KEY=$(json_get "$RESP" enterprise_agent_key)
+TEMPER_URL=$(json_get "$RESP" temper_url)
+TEMPER_KEY=$(json_get "$RESP" temper_key)
 
 # --- write forge enterprise config ------------------------------------------
 FORGE_DIR="$HOME/.forge"
@@ -155,6 +157,28 @@ if [ -n "$ENTERPRISE_AGENT_KEY" ]; then
   c_green "  + wrote $FORGE_DIR/data/.enterprise-keys.json (forge enterprise agent key)"
 else
   c_ylw "  ! Hub returned no enterprise agent key (admin: Foundry -> Settings -> Keys -> forge_enterprise_key)"
+fi
+
+# Pre-fill forge's settings so its wizard is skipped: identity + temper memory.
+# forge merges this partial file with its defaults on load, and tolerates a
+# plaintext secret (temperKey) -- it re-encrypts on the next save. Only write
+# if there's no settings.yaml yet, so we never clobber an existing config.
+SETTINGS="$FORGE_DIR/data/settings.yaml"
+if [ -f "$SETTINGS" ]; then
+  c_ylw "  ! $SETTINGS exists - leaving it (set identity/temper in forge Settings)"
+else
+  mkdir -p "$FORGE_DIR/data"
+  MEM_BACKEND="auto"; [ -n "$TEMPER_KEY" ] && MEM_BACKEND="temper"
+  {
+    printf 'displayName: "%s"\n'  "$(json_escape "$USERNAME")"
+    printf 'displayEmail: "%s"\n' "$(json_escape "$EMAIL")"
+    printf 'temperUrl: "%s"\n'    "$(json_escape "$TEMPER_URL")"
+    printf 'temperKey: "%s"\n'    "$(json_escape "$TEMPER_KEY")"
+    printf 'memoryBackend: "%s"\n' "$MEM_BACKEND"
+    printf 'onboardingCompleted: true\n'
+  } > "$SETTINGS"
+  chmod 600 "$SETTINGS"
+  c_green "  + wrote $SETTINGS (identity + temper + wizard skipped)"
 fi
 
 # --- install the forge CLI ---------------------------------------------------
