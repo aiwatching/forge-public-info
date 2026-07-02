@@ -10,13 +10,21 @@
 #   curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-enterprise.sh | bash -s -- --token <ENROLL_TOKEN>
 #
 # Flags:
-#   --token <t>       enrollment token (required; from the Foundry console)
-#   --foundry <url>   Foundry Hub base URL (default http://10.15.33.50:18503)
-#   --no-deps         only enroll + write config, don't install the forge CLI
-#   -h, --help        this help
+#   --token <t>              enrollment token (required first time; from the Foundry console)
+#   --user-key <fk>          redeploy with an existing forge api key (zero prompts)
+#   --foundry <url>          Foundry Hub base URL (default http://10.15.33.50:18503)
+#   --backup-passphrase <s>  passphrase for encrypted backups (seeds auto-backup + used by --restore)
+#   --restore                after config, restore the NEWEST Foundry backup (needs forge >= 0.13.0)
+#   --restore-id <id>        restore a specific backup id (implies --restore)
+#   --no-deps                only enroll + write config, don't install the forge CLI
+#   -h, --help               this help
 #
 # You'll be prompted for: username, email (must be a fortinet.com address),
 # gitlab PAT, gitlab name.
+#
+# Fresh-machine recovery example (restore everything from a Foundry backup):
+#   curl -fsSL .../install-forge-enterprise.sh | bash -s -- \
+#     --user-key <fk> --foundry <url> --restore --backup-passphrase <s>
 #
 # This file is intentionally ASCII-only: when `bash -s -- <args>` reads the
 # script from a curl pipe, multi-byte UTF-8 can split across read buffers and
@@ -28,6 +36,9 @@ FOUNDRY_URL="http://10.15.33.50:18503"
 ENROLL_TOKEN=""
 USER_KEY=""
 INSTALL_DEPS=1
+RESTORE=0
+RESTORE_ID=""
+BACKUP_PASSPHRASE=""
 LOCAL_INSTALLER="https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-local.sh"
 
 c_green() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -40,6 +51,9 @@ while [ "$#" -gt 0 ]; do
     --token)    ENROLL_TOKEN="${2:-}"; shift 2 ;;
     --user-key) USER_KEY="${2:-}"; shift 2 ;;
     --foundry)  FOUNDRY_URL="${2:-}"; shift 2 ;;
+    --restore)  RESTORE=1; shift ;;                                  # restore newest backup after config
+    --restore-id) RESTORE=1; RESTORE_ID="${2:-}"; shift 2 ;;         # restore a specific backup id
+    --backup-passphrase) BACKUP_PASSPHRASE="${2:-}"; shift 2 ;;      # decrypts backups; also seeds auto-backup
     --no-deps)  INSTALL_DEPS=0; shift ;;
     -h|--help) sed -n '2,27p' "$0" 2>/dev/null || grep '^#' "$0" | head -27; exit 0 ;;
     *) die "Unknown flag: $1  (see --help)" ;;
@@ -206,10 +220,12 @@ FORGE_BIN="$(command -v forge || true)"
 [ -z "$FORGE_BIN" ] && [ -x "$(npm bin -g 2>/dev/null)/forge" ] && FORGE_BIN="$(npm bin -g 2>/dev/null)/forge"
 FVER="$("$FORGE_BIN" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 ONBOARD_MIN="0.11.20"
+FOUNDRY_MIN="0.13.0"   # forge Enterprise Center (foundry connection + backup/restore)
 has_onboard=0
-if [ -n "$FORGE_BIN" ] && [ -n "$FVER" ] && \
-   [ "$(printf '%s\n%s\n' "$ONBOARD_MIN" "$FVER" | sort -V | head -1)" = "$ONBOARD_MIN" ]; then
-  has_onboard=1
+has_foundry=0
+if [ -n "$FORGE_BIN" ] && [ -n "$FVER" ]; then
+  [ "$(printf '%s\n%s\n' "$ONBOARD_MIN" "$FVER" | sort -V | head -1)" = "$ONBOARD_MIN" ] && has_onboard=1
+  [ "$(printf '%s\n%s\n' "$FOUNDRY_MIN" "$FVER" | sort -V | head -1)" = "$FOUNDRY_MIN" ] && has_foundry=1
 fi
 
 if [ "$has_onboard" = 1 ] && [ -n "$ENTERPRISE_AGENT_KEY" ]; then
@@ -222,8 +238,14 @@ if [ "$has_onboard" = 1 ] && [ -n "$ENTERPRISE_AGENT_KEY" ]; then
   [ -n "$GITLAB_BASE_URL" ] && set -- "$@" --gitlab-base-url "$GITLAB_BASE_URL"
   [ -n "$TEMPER_URL" ] && set -- "$@" --temper-url "$TEMPER_URL"
   [ -n "$TEMPER_KEY" ] && set -- "$@" --temper-key "$TEMPER_KEY"
+  # Enterprise Center: connect this forge to Foundry so it can auto-back-up (>= 0.13.0).
+  if [ "$has_foundry" = 1 ]; then
+    set -- "$@" --foundry-url "$FOUNDRY_URL" --foundry-key "$APIKEY"
+    [ -n "$BACKUP_PASSPHRASE" ] && set -- "$@" --foundry-backup-passphrase "$BACKUP_PASSPHRASE"
+  fi
   if "$FORGE_BIN" "$@"; then
     c_green "  + forge onboarded (identity + enterprise template + temper + gitlab)"
+    [ "$has_foundry" = 1 ] && c_green "  + connected to Foundry Enterprise Center (auto-backup on)"
   else
     c_red "  x forge onboard failed (exit $?) - finish in forge Settings"
   fi
@@ -252,6 +274,26 @@ else
   set_yaml onboardingCompleted "true"
   chmod 600 "$SETTINGS"
   c_green "  + merged identity + temper into settings.yaml (wizard skipped)"
+fi
+
+# --- restore from a Foundry backup (fresh-machine recovery) ------------------
+if [ "$RESTORE" = 1 ]; then
+  if [ "$has_foundry" != 1 ]; then
+    c_ylw "  ! --restore needs forge >= $FOUNDRY_MIN (have ${FVER:-none}) - skipping restore"
+  else
+    c_green ""
+    c_green "Restoring from Foundry backup..."
+    set -- restore --from-foundry
+    [ -n "$RESTORE_ID" ] && set -- "$@" --id "$RESTORE_ID"
+    [ -n "$BACKUP_PASSPHRASE" ] && set -- "$@" --backup-passphrase "$BACKUP_PASSPHRASE"
+    if "$FORGE_BIN" "$@"; then
+      c_green "  + restored ${RESTORE_ID:-newest} backup"
+    else
+      c_red "  x restore failed (exit $?)"
+      c_ylw "    list backups:  forge restore --from-foundry --list"
+      c_ylw "    then:          forge restore --from-foundry --id <id> --backup-passphrase <s>"
+    fi
+  fi
 fi
 
 c_green ""
