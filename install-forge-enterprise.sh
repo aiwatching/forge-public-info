@@ -155,6 +155,9 @@ TEMPER_KEY=$(json_get "$RESP" temper_key)
 GITLAB_BASE_URL=$(json_get "$RESP" gitlab_base_url)
 GITLAB_PAT=$(json_get "$RESP" gitlab_pat)
 GITLAB_NAME=$(json_get "$RESP" gitlab_name)
+# foundry_sync is a bool (not a quoted string) - grep it directly.
+FOUNDRY_SYNC=$(printf '%s' "$RESP" | grep -oE '"foundry_sync":(true|false)' | head -1 | sed 's/.*://')
+[ -n "$FOUNDRY_SYNC" ] || FOUNDRY_SYNC=false
 
 # --- write forge enterprise config ------------------------------------------
 FORGE_DIR="$HOME/.forge"
@@ -168,7 +171,8 @@ cat > "$CFG" <<EOF
   "email": "$(json_escape "$EMAIL")",
   "apikey": "$(json_escape "$APIKEY")",
   "gitlab_name": "$(json_escape "$GITLAB_NAME")",
-  "gitlab_pat": "$(json_escape "$GITLAB_PAT")"
+  "gitlab_pat": "$(json_escape "$GITLAB_PAT")",
+  "foundry_sync": $FOUNDRY_SYNC
 }
 EOF
 chmod 600 "$CFG"
