@@ -109,7 +109,9 @@ if [ -n "$USER_KEY" ]; then
     [ "$CODE" = "000" ] && c_ylw "     -> could not reach $FOUNDRY_URL. On the internal network?"
     exit 1
   fi
-  APIKEY="$USER_KEY"
+  # The deploy token is single-use; the Hub hands back a durable key in the
+  # bundle for forge's ongoing calls. Fall back to the token for older Hubs.
+  APIKEY=$(json_get "$RESP" apikey); [ -n "$APIKEY" ] || APIKEY="$USER_KEY"
 else
   # First enroll: identity + gitlab, gated by the shared enroll token.
   USERNAME=""; EMAIL=""; GITLAB_PAT=""; GITLAB_NAME=""
