@@ -230,6 +230,16 @@ if [ -n "$FORGE_BIN" ] && [ -n "$FVER" ]; then
   [ "$(printf '%s\n%s\n' "$FOUNDRY_MIN" "$FVER" | sort -V | head -1)" = "$FOUNDRY_MIN" ] && has_foundry=1
 fi
 
+# --- embedded browser (Playwright + Chromium) --------------------------------
+# The npm postinstall skips the ~150MB download when there's no TTY (curl|bash),
+# so a one-click enterprise install would otherwise land without it. Force it
+# here: `forge browser install` installs unconditionally (never fails the run).
+if [ "$INSTALL_DEPS" = 1 ] && [ -n "$FORGE_BIN" ]; then
+  c_green ""
+  c_green "Installing the embedded browser (Playwright + Chromium)..."
+  "$FORGE_BIN" browser install || c_ylw "  ! browser install failed - add later with: forge browser install"
+fi
+
 if [ "$has_onboard" = 1 ] && [ -n "$ENTERPRISE_AGENT_KEY" ]; then
   c_green ""
   c_green "Configuring forge (forge onboard)..."
