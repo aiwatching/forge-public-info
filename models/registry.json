@@ -1,12 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/aiwatching/forge-public-info/main/models/registry.schema.json",
   "version": 1,
-  "updatedAt": "2026-06-10",
+  "updatedAt": "2026-07-09",
   "note": "Forge consumes this at startup via lib/public-info/fetch.ts (24h cache). 'agents' holds CLI agent types (claude-code, codex, aider); 'providers' holds API providers (anthropic, openai, etc). UI looks up by cliType for CLI profiles and by provider for API profiles.",
   "agents": {
     "claude-code": {
       "displayName": "Claude Code",
-      "default": "claude-sonnet-4-6",
+      "default": "claude-sonnet-5",
       "aliases": [
         { "id": "default", "label": "default (CLI decides)" },
         { "id": "fable",   "label": "fable (alias → latest fable)" },
@@ -17,7 +17,7 @@
       "models": [
         { "id": "claude-fable-5",           "label": "Fable 5",    "tier": "premium",  "default": false },
         { "id": "claude-opus-4-8",          "label": "Opus 4.8",   "tier": "premium",  "default": false },
-        { "id": "claude-sonnet-4-6",        "label": "Sonnet 4.6", "tier": "standard", "default": true  },
+        { "id": "claude-sonnet-5",        "label": "Sonnet 5", "tier": "standard", "default": true  },
         { "id": "claude-haiku-4-5-20251001","label": "Haiku 4.5",  "tier": "fast",     "default": false }
       ]
     },
@@ -45,12 +45,12 @@
   "providers": {
     "anthropic": {
       "displayName": "Anthropic API",
-      "default": "claude-sonnet-4-6",
+      "default": "claude-sonnet-5",
       "aliases": [],
       "models": [
         { "id": "claude-fable-5",            "label": "Fable 5",    "tier": "premium",  "default": false },
         { "id": "claude-opus-4-8",           "label": "Opus 4.8",   "tier": "premium",  "default": false },
-        { "id": "claude-sonnet-4-6",         "label": "Sonnet 4.6", "tier": "standard", "default": true  },
+        { "id": "claude-sonnet-5",         "label": "Sonnet 5", "tier": "standard", "default": true  },
         { "id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5",  "tier": "fast",     "default": false }
       ]
     },
