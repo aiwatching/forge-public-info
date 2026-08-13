@@ -22,6 +22,16 @@ Skip optional CLIs:
 curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-forge-local.sh | bash -s -- --skip-optional
 ```
 
+### Dependencies only (no Forge install)
+
+To install just the prerequisites (`node` ≥ 22.13, `pnpm`, `tmux`, `git`, an agent CLI, optional `jq`/`glab`/`gh`) **without** installing or starting Forge — e.g. to prep a machine, or before an install-from-source:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aiwatching/forge-public-info/main/install-deps.sh | bash
+```
+
+Same `--yes` / `--skip-optional` flags. Afterwards run the one-line install above, or `npm install -g @aion0/forge`.
+
 ## After install
 
 ```bash
